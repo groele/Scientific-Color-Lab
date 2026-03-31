@@ -25,9 +25,10 @@ function Layout() {
 
 export function AppRoutes() {
   const Router = useHashRouter ? HashRouter : BrowserRouter;
+  const routerProps = useHashRouter ? {} : { basename: routerBase };
 
   return (
-    <Router basename={routerBase}>
+    <Router {...routerProps}>
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<Navigate to="/workspace" replace />} />

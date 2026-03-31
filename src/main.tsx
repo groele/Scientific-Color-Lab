@@ -8,11 +8,13 @@ import '@/styles/index.css';
 registerScientificColorLabPwa();
 
 const routerBase = import.meta.env.BASE_URL.replace(/\/+$/, '') || '';
+const useHashRouter = import.meta.env.BASE_URL !== '/';
 const redirectedPath = new URLSearchParams(window.location.search).get('redirect');
 if (redirectedPath) {
   const normalizedRedirect = redirectedPath.startsWith('/') ? redirectedPath : `/${redirectedPath}`;
-  const nextUrl =
-    routerBase && normalizedRedirect.startsWith(routerBase)
+  const nextUrl = useHashRouter
+    ? `${routerBase}/#${normalizedRedirect}`
+    : routerBase && normalizedRedirect.startsWith(routerBase)
       ? normalizedRedirect
       : `${routerBase}${normalizedRedirect}` || normalizedRedirect;
   window.history.replaceState(null, '', nextUrl);

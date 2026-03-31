@@ -7,9 +7,11 @@
   </head>
   <body>
     <script>
-      const current = window.location.pathname + window.location.search + window.location.hash;
       const base = '/Scientific-Color-Lab/';
-      const target = `${base}?redirect=${encodeURIComponent(current)}`;
+      const currentPath = window.location.pathname.startsWith(base)
+        ? window.location.pathname.slice(base.length - 1)
+        : window.location.pathname;
+      const target = `${base}#${currentPath}${window.location.search}${window.location.hash}`;
       window.location.replace(target);
     </script>
   </body>

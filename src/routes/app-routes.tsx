@@ -1,6 +1,6 @@
 import { Suspense, lazy } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { AppShell } from '@/app/app-shell';
 
 const WorkspacePage = lazy(() => import('@/pages/workspace-page').then((module) => ({ default: module.WorkspacePage })));
@@ -9,6 +9,7 @@ const AnalyzerPage = lazy(() => import('@/pages/analyzer-page').then((module) =>
 const ExportCenterPage = lazy(() => import('@/pages/export-center-page').then((module) => ({ default: module.ExportCenterPage })));
 const SettingsPage = lazy(() => import('@/pages/settings-page').then((module) => ({ default: module.SettingsPage })));
 const routerBase = import.meta.env.BASE_URL.replace(/\/+$/, '') || '/';
+const useHashRouter = import.meta.env.BASE_URL !== '/';
 
 function Layout() {
   const { t } = useTranslation(['common']);
@@ -23,8 +24,10 @@ function Layout() {
 }
 
 export function AppRoutes() {
+  const Router = useHashRouter ? HashRouter : BrowserRouter;
+
   return (
-    <BrowserRouter basename={routerBase}>
+    <Router basename={routerBase}>
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<Navigate to="/workspace" replace />} />
@@ -37,6 +40,6 @@ export function AppRoutes() {
           <Route path="/generators" element={<Navigate to="/workspace?view=chart-preview" replace />} />
         </Route>
       </Routes>
-    </BrowserRouter>
+    </Router>
   );
 }

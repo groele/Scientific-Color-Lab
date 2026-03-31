@@ -8,6 +8,7 @@ const LibraryPage = lazy(() => import('@/pages/library-page').then((module) => (
 const AnalyzerPage = lazy(() => import('@/pages/analyzer-page').then((module) => ({ default: module.AnalyzerPage })));
 const ExportCenterPage = lazy(() => import('@/pages/export-center-page').then((module) => ({ default: module.ExportCenterPage })));
 const SettingsPage = lazy(() => import('@/pages/settings-page').then((module) => ({ default: module.SettingsPage })));
+const routerBase = import.meta.env.BASE_URL.replace(/\/+$/, '') || '/';
 
 function Layout() {
   const { t } = useTranslation(['common']);
@@ -23,7 +24,7 @@ function Layout() {
 
 export function AppRoutes() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={routerBase}>
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<Navigate to="/workspace" replace />} />

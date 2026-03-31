@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 42 24% 97%;
+    --foreground: 210 17% 10%;
+    --panel: 0 0% 100%;
+    --border: 210 14% 85%;
+    --accent: 205 38% 34%;
+    --accent-soft: 205 30% 92%;
+    --muted: 210 22% 95%;
+    --danger: 12 66% 42%;
+    --success: 158 38% 34%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply min-h-screen bg-background font-sans text-foreground antialiased;
+    background-image:
+      radial-gradient(circle at top left, rgba(77, 108, 128, 0.07), transparent 28%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(246, 245, 241, 0.96));
+  }
+
+  #root {
+    @apply min-h-screen;
+  }
+
+  ::selection {
+    background: rgba(62, 98, 126, 0.18);
+  }
+}
+
+@layer components {
+  .panel-surface {
+    @apply rounded-xl border border-border/80 bg-panel/90 shadow-panel backdrop-blur;
+  }
+
+  .section-label {
+    @apply font-mono text-[11px] uppercase tracking-[0.22em] text-foreground/55;
+  }
+
+  .eyebrow {
+    @apply font-mono text-[10px] uppercase tracking-[0.28em] text-foreground/45;
+  }
+}

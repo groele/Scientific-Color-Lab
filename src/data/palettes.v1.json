@@ -1,0 +1,42 @@
+[
+  {
+    "id": "editorial-qualitative",
+    "name": "Editorial Qualitative",
+    "class": "qualitative",
+    "description": "Restrained categorical accents for line charts and conceptual diagrams.",
+    "tags": ["preset", "editorial", "categorical"],
+    "colors": ["#19395A", "#7C5762", "#446E65", "#A17143", "#635D89", "#4F6E82"]
+  },
+  {
+    "id": "basalt-sequential",
+    "name": "Basalt Sequential",
+    "class": "sequential",
+    "description": "Monotonic slate-to-ink progression for heatmaps and density maps.",
+    "tags": ["preset", "sequential", "monotonic"],
+    "colors": ["#F3F4F3", "#D8DEE1", "#BAC5CB", "#92A5B0", "#6C8594", "#436175", "#1C3447"]
+  },
+  {
+    "id": "mineral-diverging",
+    "name": "Mineral Diverging",
+    "class": "diverging",
+    "description": "Cool-to-warm diverging palette with a soft mineral midpoint.",
+    "tags": ["preset", "diverging", "balanced"],
+    "colors": ["#1F4C70", "#4F7697", "#93B3C6", "#E7E7E1", "#D7B59B", "#B97D5B", "#7F4739"]
+  },
+  {
+    "id": "phase-cyclic",
+    "name": "Phase Cyclic",
+    "class": "cyclic",
+    "description": "Continuous cyclic map tuned for periodic phase-like data.",
+    "tags": ["preset", "cyclic", "continuous"],
+    "colors": ["#315D88", "#4B7C86", "#6D8F69", "#9C9257", "#AD7953", "#9A6067", "#705F88", "#315D88"]
+  },
+  {
+    "id": "concept-figure",
+    "name": "Concept Figure",
+    "class": "concept",
+    "description": "Neutral-forward concept figure palette with one measured accent family.",
+    "tags": ["preset", "concept", "diagram"],
+    "colors": ["#111213", "#5C6164", "#A8AFB5", "#EAECEA", "#385E76", "#708E9D", "#B78A59"]
+  }
+]

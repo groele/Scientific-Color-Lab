@@ -9,9 +9,10 @@ import { useLibraryStore } from '@/stores/library-store';
 interface RouteNavigationPanelProps {
   onInstall?: () => void;
   canInstall?: boolean;
+  isInstalled?: boolean;
 }
 
-export function RouteNavigationPanel({ onInstall, canInstall = false }: RouteNavigationPanelProps) {
+export function RouteNavigationPanel({ onInstall, canInstall = false, isInstalled = false }: RouteNavigationPanelProps) {
   const { t } = useTranslation(['common', 'workspace']);
   const projects = useLibraryStore((state) => state.projects);
   const latestProject = projects[0];
@@ -56,9 +57,12 @@ export function RouteNavigationPanel({ onInstall, canInstall = false }: RouteNav
           </div>
           <div className="space-y-3">
             <LanguageSwitcher />
-            <Button className="w-full" variant="outline" onClick={onInstall} disabled={!canInstall}>
-              {t('common:install')} PWA
+            <Button className="w-full" variant="outline" onClick={onInstall} disabled={!canInstall || isInstalled}>
+              {isInstalled ? t('common:installed') : t('common:installPwa')}
             </Button>
+            <div className="text-xs text-foreground/55">
+              {isInstalled ? t('common:installHint') : canInstall ? t('common:installHint') : t('common:installUnavailable')}
+            </div>
           </div>
         </div>
 

@@ -12,7 +12,7 @@ import { usePreferencesStore } from '@/stores/preferences-store';
 
 export function SettingsPage() {
   const { t } = useTranslation(['common', 'settings']);
-  const { canInstall, install } = usePwaInstall();
+  const { canInstall, isInstalled, install } = usePwaInstall();
   const language = useI18nStore((state) => state.language);
   const copyFormat = usePreferencesStore((state) => state.copyFormat);
   const setCopyFormat = usePreferencesStore((state) => state.setCopyFormat);
@@ -25,7 +25,7 @@ export function SettingsPage() {
 
   return (
     <SplitPanelLayout
-      left={<RouteNavigationPanel canInstall={canInstall} onInstall={() => void install()} />}
+      left={<RouteNavigationPanel canInstall={canInstall} isInstalled={isInstalled} onInstall={() => void install()} />}
       center={
         <Card>
           <CardHeader className="pb-3">

@@ -21,7 +21,7 @@ function samplePalette(): Palette {
     class: 'qualitative',
     colors,
     baseColorId: colors[0]!.id,
-    diagnostics: { score: 100, items: [] },
+    diagnostics: { score: 100, status: 'healthy', summary: 'Healthy · score 100', quickFixes: [], items: [] },
     tags: ['study', 'test'],
     notes: 'palette note',
     provenance: { source: 'manual', reference: 'test' },
@@ -53,7 +53,7 @@ describe('export service', () => {
     expect(payload.content).toContain('调色板: Sample Palette');
     expect(payload.content).toContain('类型: qualitative');
     expect(payload.content).toContain('标签: study, test');
-    expect(payload.content).toContain('--- NOTES ---');
+    expect(payload.content).toContain('--- 备注 ---');
   });
 
   it('produces a readable en project summary with included palettes', () => {

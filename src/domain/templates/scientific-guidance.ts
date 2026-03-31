@@ -11,7 +11,12 @@ export type ScientificTemplateLabelKey =
   | 'goodDiverging'
   | 'goodCyclic'
   | 'lowMisuseRisk'
-  | 'restrainedEditorial';
+  | 'restrainedEditorial'
+  | 'highContrast'
+  | 'thinLineSafe'
+  | 'denseScatterSafe'
+  | 'presentationStrong'
+  | 'darkBgHeatmap';
 
 export interface ScientificTemplateMeta {
   labels: ScientificTemplateLabelKey[];
@@ -137,12 +142,52 @@ export function deriveScientificTemplateMeta(template: TemplateDescriptor): Scie
     labels.push('restrainedEditorial');
   }
 
+  if (
+    template.tags.includes('high-contrast') ||
+    template.structure === 'high-contrast-categorical' ||
+    template.tone === 'Presentation Strong'
+  ) {
+    labels.push('highContrast');
+  }
+
+  if (
+    template.chartType === 'line-plot' &&
+    !hasAccessibilityRisk &&
+    minimumPairwiseDistance(palette) >= 18
+  ) {
+    labels.push('thinLineSafe');
+  }
+
+  if (
+    template.chartType === 'scatter-plot' &&
+    !hasAccessibilityRisk &&
+    minimumPairwiseDistance(palette) >= 15
+  ) {
+    labels.push('denseScatterSafe');
+  }
+
+  if (template.tone === 'Presentation Strong' && !hasErrors) {
+    labels.push('presentationStrong');
+  }
+
+  if (
+    template.backgroundMode === 'dark' &&
+    template.chartType === 'heatmap' &&
+    !hasAccessibilityRisk
+  ) {
+    labels.push('darkBgHeatmap');
+  }
+
   const score =
     palette.diagnostics.score +
     labels.length * 2 -
     (hasAccessibilityRisk ? 4 : 0) -
     (hasPaletteRisk ? 6 : 0) -
-    (hasErrors ? 8 : 0);
+    (hasErrors ? 8 : 0) +
+    (labels.includes('highContrast') ? 3 : 0) +
+    (labels.includes('thinLineSafe') ? 4 : 0) +
+    (labels.includes('denseScatterSafe') ? 4 : 0) +
+    (labels.includes('darkBgHeatmap') ? 3 : 0);
 
   return {
     labels: [...new Set(labels)],

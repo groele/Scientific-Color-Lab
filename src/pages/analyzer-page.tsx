@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle, ClipboardPaste, Sparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -16,7 +16,8 @@ import {
 } from '@/components/viz/image-analysis';
 import { DiagnosticsPanel } from '@/components/workspace/diagnostics-panel';
 import { ColorSwatchButton } from '@/components/color/color-swatch-button';
-import type { ColorToken, ImageCluster } from '@/domain/models';
+import { paletteFromColors } from '@/domain/color/palette';
+import type { ColorToken, ImageCluster, Palette } from '@/domain/models';
 import { useAnalyzerStore } from '@/stores/analyzer-store';
 import { useLibraryStore } from '@/stores/library-store';
 import { useWorkspaceStore } from '@/stores/workspace-store';
@@ -74,23 +75,39 @@ function clusterSummary(cluster: ImageCluster | null) {
 
 function clusterSuitability(cluster: ImageCluster | null, isZh: boolean) {
   if (!cluster?.assessment) {
-    return isZh ? '在出版使用前仍需要重构。' : 'Needs reconstruction before publication use.';
+    return isZh ? '在正式用于论文或图表前，建议先做科研重构。' : 'Needs scientific reconstruction before publication use.';
   }
 
   const flags = [];
-  if (cluster.assessment.categorical) flags.push(isZh ? '分类色' : 'categorical');
-  if (cluster.assessment.gradientEndpoint) flags.push(isZh ? '渐变端点' : 'gradient endpoint');
-  if (cluster.assessment.background) flags.push(isZh ? '背景' : 'background');
-  if (cluster.assessment.text) flags.push(isZh ? '文字' : 'text');
-  if (cluster.assessment.accent) flags.push(isZh ? '强调色' : 'accent');
-  return flags.length ? (isZh ? `适合作为${flags.join('、')}。` : `Suitable for ${flags.join(', ')}.`) : isZh ? '在出版使用前仍需要重构。' : 'Needs reconstruction before publication use.';
+  if (cluster.assessment.categorical) flags.push(isZh ? '分类色' : 'categorical use');
+  if (cluster.assessment.gradientEndpoint) flags.push(isZh ? '渐变端点' : 'gradient endpoints');
+  if (cluster.assessment.background) flags.push(isZh ? '背景色' : 'background use');
+  if (cluster.assessment.text) flags.push(isZh ? '文字色' : 'text use');
+  if (cluster.assessment.accent) flags.push(isZh ? '强调色' : 'accent use');
+
+  return flags.length
+    ? isZh
+      ? `更适合作为：${flags.join('、')}`
+      : `Best suited for ${flags.join(', ')}.`
+    : isZh
+      ? '在正式用于论文或图表前，建议先做科研重构。'
+      : 'Needs scientific reconstruction before publication use.';
+}
+
+function createRawPalette(result: NonNullable<ReturnType<typeof useAnalyzerStore.getState>['result']>): Palette {
+  return paletteFromColors(
+    'Raw Image Clusters',
+    'qualitative',
+    result.mergedClusters.slice(0, 6).map((cluster) => cluster.color),
+    'image-analysis',
+  );
 }
 
 export function AnalyzerPage() {
   const { t, i18n } = useTranslation(['analyzer']);
   const isZh = i18n.language === 'zh-CN';
   const navigate = useNavigate();
-  const { canInstall, install } = usePwaInstall();
+  const { canInstall, isInstalled, install } = usePwaInstall();
   const previewUrl = useAnalyzerStore((state) => state.previewUrl);
   const result = useAnalyzerStore((state) => state.result);
   const isAnalyzing = useAnalyzerStore((state) => state.isAnalyzing);
@@ -105,6 +122,7 @@ export function AnalyzerPage() {
   const clear = useAnalyzerStore((state) => state.clear);
   const setCurrentPalette = useWorkspaceStore((state) => state.setCurrentPalette);
   const remember = useLibraryStore((state) => state.remember);
+  const [paletteMode, setPaletteMode] = useState<'raw' | 'scientific'>('scientific');
 
   const selectedCluster = result?.mergedClusters.find((cluster) => cluster.id === selectedClusterId) ?? result?.mergedClusters[0] ?? null;
   const selectedSuggestedColor =
@@ -112,10 +130,12 @@ export function AnalyzerPage() {
   const inspectorColor: ColorToken | null = selectedSuggestedColorId ? selectedSuggestedColor : selectedCluster?.color ?? selectedSuggestedColor;
   const inspectorMetaLabel = selectedSuggestedColorId ? t('analyzer:suitability') : t('analyzer:analysisSummary');
   const inspectorMetaValue = selectedSuggestedColorId
-    ? selectedSuggestedColor?.usage.join(', ') || 'Reconstructed for scientific use'
+    ? selectedSuggestedColor?.usage.join(', ') || (isZh ? '已重构为更适合科研使用的颜色。' : 'Reconstructed for scientific use.')
     : clusterSummary(selectedCluster) ?? undefined;
   const inspectorSecondary = selectedSuggestedColorId ? selectedSuggestedColor?.notes : clusterSuitability(selectedCluster, isZh);
   const suitabilitySummary = result ? deriveSuitabilitySummary(result.mergedClusters) : null;
+  const rawPalette = useMemo(() => (result ? createRawPalette(result) : null), [result]);
+  const activePalette = paletteMode === 'raw' && rawPalette ? rawPalette : result?.suggestedPalette ?? null;
 
   useEffect(() => {
     const handlePaste = (event: ClipboardEvent) => {
@@ -130,9 +150,13 @@ export function AnalyzerPage() {
     return () => window.removeEventListener('paste', handlePaste);
   }, [analyzeBlob]);
 
+  useEffect(() => {
+    setPaletteMode('scientific');
+  }, [result?.imageId]);
+
   const handleSampleLoad = async () => {
     try {
-      const response = await fetch('/examples/lab-spectrum.svg');
+      const response = await fetch(`${import.meta.env.BASE_URL}examples/lab-spectrum.svg`);
       if (!response.ok) {
         throw new Error('Unable to fetch the bundled example image.');
       }
@@ -147,7 +171,7 @@ export function AnalyzerPage() {
 
   return (
     <SplitPanelLayout
-      left={<RouteNavigationPanel canInstall={canInstall} onInstall={() => void install()} />}
+      left={<RouteNavigationPanel canInstall={canInstall} isInstalled={isInstalled} onInstall={() => void install()} />}
       center={
         <>
           <ImageDropzone
@@ -218,16 +242,43 @@ export function AnalyzerPage() {
               />
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle>{t('analyzer:resultPalette')}</CardTitle>
+                  <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                    <div>
+                      <CardTitle>{t('analyzer:resultPalette')}</CardTitle>
+                      <p className="mt-1 text-sm text-foreground/65">
+                        {paletteMode === 'raw' ? t('analyzer:rawExtractionBody') : t('analyzer:scientificReconstructionBody')}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant={paletteMode === 'raw' ? 'outline' : 'ghost'} onClick={() => setPaletteMode('raw')}>
+                        {t('analyzer:rawExtraction')}
+                      </Button>
+                      <Button variant={paletteMode === 'scientific' ? 'outline' : 'ghost'} onClick={() => setPaletteMode('scientific')}>
+                        {t('analyzer:scientificReconstruction')}
+                      </Button>
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {result.suggestedPalette.colors.map((color) => (
+                    {(activePalette?.colors ?? []).map((color) => (
                       <ColorSwatchButton
                         key={color.id}
                         color={color}
-                        selected={color.id === selectedSuggestedColor?.id}
-                        onSelect={() => selectSuggestedColor(color.id)}
+                        selected={paletteMode === 'scientific' ? color.id === selectedSuggestedColor?.id : color.id === selectedCluster?.color.id}
+                        onSelect={() => {
+                          if (!result) {
+                            return;
+                          }
+
+                          if (paletteMode === 'scientific') {
+                            selectSuggestedColor(color.id);
+                            return;
+                          }
+
+                          const clusterId = result.mergedClusters.find((cluster) => cluster.color.id === color.id)?.id ?? null;
+                          selectCluster(clusterId);
+                        }}
                       />
                     ))}
                   </div>
@@ -246,7 +297,6 @@ export function AnalyzerPage() {
             metaValue={inspectorMetaValue}
             secondaryMeta={inspectorSecondary}
           />
-          {result ? <DiagnosticsPanel diagnostics={result.diagnostics} /> : null}
           {result ? (
             <Card>
               <CardHeader className="pb-3">
@@ -260,8 +310,12 @@ export function AnalyzerPage() {
                 <Button
                   className="w-full"
                   onClick={() => {
-                    setCurrentPalette(result.suggestedPalette);
-                    void remember('analyzer', result.imageId, result.suggestedPalette.name, '/analyzer');
+                    if (!result || !activePalette) {
+                      return;
+                    }
+
+                    setCurrentPalette(activePalette);
+                    void remember('analyzer', result.imageId, activePalette.name, '/analyzer');
                     navigate('/workspace');
                   }}
                 >
@@ -273,6 +327,7 @@ export function AnalyzerPage() {
               </CardContent>
             </Card>
           ) : null}
+          {result ? <DiagnosticsPanel diagnostics={result.diagnostics} /> : null}
         </>
       }
     />

@@ -38,7 +38,7 @@ function createDraftProfile(name: string, base?: ExportProfile): ExportProfile {
 export function ExportCenterPage() {
   const { t } = useTranslation(['common', 'exports']);
   const { pushToast } = useToast();
-  const { canInstall, install } = usePwaInstall();
+  const { canInstall, isInstalled, install } = usePwaInstall();
   const currentPalette = useWorkspaceStore((state) => state.currentPalette);
   const selectedColor = useWorkspaceStore((state) => state.getSelectedColor());
   const palettes = useLibraryStore((state) => state.palettes);
@@ -127,7 +127,7 @@ export function ExportCenterPage() {
     <SplitPanelLayout
       left={
         <>
-          <RouteNavigationPanel canInstall={canInstall} onInstall={() => void install()} />
+          <RouteNavigationPanel canInstall={canInstall} isInstalled={isInstalled} onInstall={() => void install()} />
           <Card>
             <CardHeader className="pb-3">
               <CardTitle>{t('exports:profiles')}</CardTitle>

@@ -9,7 +9,7 @@ import type {
 } from '@/domain/models';
 import { paletteFromColors } from '@/domain/color/palette';
 import { createId, scientificColorFromOklch } from '@/domain/color/convert';
-import { evaluatePalette } from '@/domain/diagnostics/engine';
+import { buildPaletteDiagnostics, evaluatePalette } from '@/domain/diagnostics/engine';
 
 interface LabPoint {
   l: number;
@@ -190,6 +190,7 @@ function createAnalyzerDiagnostics(clusters: ImageCluster[], mergedClusters: Ima
   if (categoricalCount < 3) {
     items.push({
       id: createId('diagnostic'),
+      code: 'analyzer-few-categorical',
       severity: 'warning',
       category: 'analyzer',
       title: 'Few clusters are suitable for categorical use',
@@ -201,6 +202,7 @@ function createAnalyzerDiagnostics(clusters: ImageCluster[], mergedClusters: Ima
   if (textSafeCount === 0) {
     items.push({
       id: createId('diagnostic'),
+      code: 'analyzer-no-text-safe',
       severity: 'warning',
       category: 'analyzer',
       title: 'No cluster is strong for text use',
@@ -212,6 +214,7 @@ function createAnalyzerDiagnostics(clusters: ImageCluster[], mergedClusters: Ima
   if (backgroundSafeCount === 0) {
     items.push({
       id: createId('diagnostic'),
+      code: 'analyzer-no-background-safe',
       severity: 'info',
       category: 'analyzer',
       title: 'No cluster behaves like a restrained background color',
@@ -223,6 +226,7 @@ function createAnalyzerDiagnostics(clusters: ImageCluster[], mergedClusters: Ima
   if (oversaturated.length >= 2) {
     items.push({
       id: createId('diagnostic'),
+      code: 'analyzer-oversaturated',
       severity: 'warning',
       category: 'analyzer',
       title: 'Several extracted colors are highly saturated',
@@ -235,6 +239,7 @@ function createAnalyzerDiagnostics(clusters: ImageCluster[], mergedClusters: Ima
   if (clusters.length - mergedClusters.length >= 2) {
     items.push({
       id: createId('diagnostic'),
+      code: 'analyzer-merged-near-duplicates',
       severity: 'info',
       category: 'analyzer',
       title: 'Near-duplicate clusters were merged',
@@ -294,10 +299,10 @@ export function analyzePixels(request: AnalyzerWorkerRequest): ImageAnalysisResu
   const suggestedPalette = buildSuggestedPalette(mergedClusters);
   const paletteDiagnostics = evaluatePalette(suggestedPalette);
   const analyzerDiagnostics = createAnalyzerDiagnostics(clusters, mergedClusters);
-  const diagnostics = {
-    score: Math.max(20, paletteDiagnostics.score - analyzerDiagnostics.filter((item) => item.severity === 'warning').length * 4),
-    items: [...paletteDiagnostics.items, ...analyzerDiagnostics],
-  };
+  const diagnostics = buildPaletteDiagnostics(
+    Math.max(20, paletteDiagnostics.score - analyzerDiagnostics.filter((item) => item.severity === 'warning').length * 4),
+    [...paletteDiagnostics.items, ...analyzerDiagnostics],
+  );
 
   return {
     imageId: request.imageId,

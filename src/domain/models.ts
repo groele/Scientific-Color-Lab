@@ -24,6 +24,7 @@ export type FigureType =
   | 'concept-figure';
 export type CopyFormat = 'hex' | 'rgb' | 'hsl' | 'lab' | 'oklch' | 'css';
 export type DiagnosticSeverity = 'info' | 'warning' | 'error';
+export type PaletteDiagnosticsStatus = 'healthy' | 'needs-attention' | 'high-risk';
 export type GamutStatus = 'in-gamut' | 'mapped';
 export type FavoriteKind = 'color' | 'palette' | 'pairing';
 export type AssetKind = 'color' | 'palette' | 'pairing' | 'image-analysis' | 'project';
@@ -68,6 +69,14 @@ export type PairingStyleBucket =
 export type ContrastStrength = 'low' | 'medium' | 'high';
 export type ToneLabel = 'restrained' | 'balanced' | 'bold';
 export type AdjustmentDimension = 'hue' | 'lightness' | 'chroma' | 'alpha';
+export type DiagnosticQuickFixId =
+  | 'reduce-chroma'
+  | 'increase-categorical-spacing'
+  | 'replace-red-green-pair'
+  | 'rebuild-sequential-ramp'
+  | 'rebalance-diverging-midpoint'
+  | 'close-cyclic-endpoints'
+  | 'suggest-safer-template';
 
 export interface NumericRgb {
   r: number;
@@ -127,6 +136,21 @@ export type ScientificColor = ColorToken;
 
 export interface DiagnosticItem {
   id: string;
+  code:
+    | 'low-interface-contrast'
+    | 'categorical-too-similar'
+    | 'red-green-conflict'
+    | 'oversaturation-risk'
+    | 'too-many-qualitative-colors'
+    | 'sequential-non-monotonic'
+    | 'diverging-midpoint-chromatic'
+    | 'cyclic-endpoints-open'
+    | 'rainbow-risk'
+    | 'analyzer-few-categorical'
+    | 'analyzer-no-text-safe'
+    | 'analyzer-no-background-safe'
+    | 'analyzer-oversaturated'
+    | 'analyzer-merged-near-duplicates';
   severity: DiagnosticSeverity;
   category:
     | 'palette-risk'
@@ -143,8 +167,16 @@ export interface DiagnosticItem {
   relatedColorIds?: string[];
 }
 
+export interface DiagnosticQuickFix {
+  id: DiagnosticQuickFixId;
+  relatedColorIds?: string[];
+}
+
 export interface PaletteDiagnostics {
   score: number;
+  status: PaletteDiagnosticsStatus;
+  summary: string;
+  quickFixes: DiagnosticQuickFix[];
   items: DiagnosticItem[];
 }
 

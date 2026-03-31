@@ -14,11 +14,11 @@ function suitabilityLabel(cluster: ImageCluster, isZh: boolean) {
   }
 
   const labels = [];
-  if (assessment.categorical) labels.push(isZh ? '分类色' : 'categorical');
-  if (assessment.gradientEndpoint) labels.push(isZh ? '渐变端点' : 'endpoint');
+  if (assessment.categorical) labels.push(isZh ? '分类' : 'categorical');
+  if (assessment.gradientEndpoint) labels.push(isZh ? '端点' : 'endpoint');
   if (assessment.background) labels.push(isZh ? '背景' : 'background');
   if (assessment.text) labels.push(isZh ? '文字' : 'text');
-  if (assessment.accent) labels.push(isZh ? '强调色' : 'accent');
+  if (assessment.accent) labels.push(isZh ? '强调' : 'accent');
   return labels.length ? labels.join(', ') : isZh ? '需要重构' : 'needs reconstruction';
 }
 
@@ -94,6 +94,7 @@ interface ClusterTreemapProps {
 }
 
 export function ClusterTreemap({ clusters, selectedClusterId, onSelect }: ClusterTreemapProps) {
+  const { t } = useTranslation(['analyzer']);
   const { copyHex } = useColorActions();
   const total = clusters.reduce((sum, cluster) => sum + cluster.count, 0) || 1;
   return (
@@ -117,7 +118,7 @@ export function ClusterTreemap({ clusters, selectedClusterId, onSelect }: Cluste
                 void copyHex(cluster.color, event.currentTarget);
               }}
             >
-              {formatPercent(cluster.percentage)}
+              {t('analyzer:clusterShare')} {formatPercent(cluster.percentage)}
             </button>
           );
         })}
@@ -161,7 +162,7 @@ export function ClusterTable({ clusters, selectedClusterId, onSelect }: ClusterT
             >
               <ColorSwatchButton color={cluster.color} compact selected={cluster.id === selectedClusterId} onSelect={() => onSelect?.(cluster.id)} />
               <div className="space-y-1 text-sm text-foreground/70">
-                <div className="section-label">{isZh ? '占比' : 'Share'}</div>
+                <div className="section-label">{t('analyzer:clusterShare')}</div>
                 <div>{formatPercent(cluster.percentage)}</div>
               </div>
               <div className="space-y-1 text-sm text-foreground/70">

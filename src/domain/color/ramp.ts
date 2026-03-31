@@ -52,7 +52,7 @@ export function buildSequentialPaletteFromBase(baseColor: ScientificColor) {
     class: 'sequential',
     colors,
     baseColorId: baseColor.id,
-    diagnostics: { score: 0, items: [] },
+    diagnostics: { score: 0, status: 'healthy', summary: '', quickFixes: [], items: [] },
     tags: ['generated', 'sequential'],
     notes: '',
     provenance: { source: 'base-color', reference: baseColor.hex },

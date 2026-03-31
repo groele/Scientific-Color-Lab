@@ -23,7 +23,7 @@ export function createPresetPalettes(): Palette[] {
       class: preset.class,
       colors,
       baseColorId: colors[0]?.id,
-      diagnostics: { score: 0, items: [] },
+      diagnostics: { score: 0, status: 'healthy', summary: '', quickFixes: [], items: [] },
       tags: preset.tags,
       notes: '',
       provenance: { source: 'preset', reference: preset.description },

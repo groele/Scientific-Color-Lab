@@ -33,6 +33,7 @@ type SummaryLabelKey =
   | 'usage'
   | 'tags'
   | 'notes'
+  | 'notesSection'
   | 'notSpecified'
   | 'none'
   | 'includedPalettes';
@@ -47,6 +48,7 @@ const SUMMARY_LABELS: Record<LanguageCode, Record<SummaryLabelKey, string>> = {
     usage: 'Usage',
     tags: 'Tags',
     notes: 'Notes',
+    notesSection: 'NOTES',
     notSpecified: 'not specified',
     none: 'none',
     includedPalettes: 'Included palettes:',
@@ -60,6 +62,7 @@ const SUMMARY_LABELS: Record<LanguageCode, Record<SummaryLabelKey, string>> = {
     usage: '用途',
     tags: '标签',
     notes: '备注',
+    notesSection: '备注',
     notSpecified: '未填写',
     none: '无',
     includedPalettes: '包含的调色板：',
@@ -78,13 +81,13 @@ function listOrFallback(values: string[], language: LanguageCode) {
   return values.length ? values.join(', ') : summaryLabel(language, 'none');
 }
 
-function withNotes(notes: string, behavior: ExportProfile['notesBehavior']) {
+function withNotes(notes: string, behavior: ExportProfile['notesBehavior'], language: LanguageCode) {
   if (behavior === 'omit') {
     return '';
   }
 
   if (behavior === 'separate') {
-    return notes ? `\n--- NOTES ---\n${notes}` : '';
+    return notes ? `\n--- ${summaryLabel(language, 'notesSection')} ---\n${notes}` : '';
   }
 
   return notes;
@@ -286,7 +289,7 @@ function exportSummary(
       `OKLCH: ${color.oklch.l} / ${color.oklch.c} / ${color.oklch.h}`,
       summaryLine(language, 'usage', listOrFallback(color.usage, language)),
       profile.includeTags ? summaryLine(language, 'tags', listOrFallback(color.tags, language)) : '',
-      withNotes(color.notes, profile.notesBehavior),
+      withNotes(color.notes, profile.notesBehavior, language),
     ]
       .filter(Boolean)
       .join('\n');
@@ -297,7 +300,7 @@ function exportSummary(
       summaryLine(language, 'project', project.name),
       summaryLine(language, 'description', project.description ?? summaryLabel(language, 'notSpecified')),
       profile.includeTags ? summaryLine(language, 'tags', String(project.tagIds.length)) : '',
-      withNotes(project.notes ?? '', profile.notesBehavior),
+      withNotes(project.notes ?? '', profile.notesBehavior, language),
       '',
       summaryLabel(language, 'includedPalettes'),
       ...projectPalettes.map((entry, index) => `${index + 1}. ${entry.name} (${entry.class})`),
@@ -314,7 +317,7 @@ function exportSummary(
     summaryLine(language, 'palette', palette.name),
     summaryLine(language, 'class', palette.class),
     profile.includeTags ? summaryLine(language, 'tags', listOrFallback(palette.tags, language)) : '',
-    withNotes(palette.notes, profile.notesBehavior),
+    withNotes(palette.notes, profile.notesBehavior, language),
     '',
     ...palette.colors.map((entry, index) => `${index + 1}. ${entry.name} ${entry.hex}`),
   ]

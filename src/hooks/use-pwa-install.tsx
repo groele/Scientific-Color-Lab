@@ -3,11 +3,25 @@ import { promptInstall, subscribeToInstallPrompt, type BeforeInstallPromptEvent 
 
 export function usePwaInstall() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [isInstalled, setIsInstalled] = useState(false);
 
-  useEffect(() => subscribeToInstallPrompt(setInstallPrompt), []);
+  useEffect(() => {
+    const standalone = window.matchMedia('(display-mode: standalone)').matches || window.matchMedia('(display-mode: fullscreen)').matches;
+    setIsInstalled(standalone);
+
+    const handleInstalled = () => setIsInstalled(true);
+    window.addEventListener('appinstalled', handleInstalled);
+    const unsubscribe = subscribeToInstallPrompt(setInstallPrompt);
+
+    return () => {
+      window.removeEventListener('appinstalled', handleInstalled);
+      unsubscribe();
+    };
+  }, []);
 
   return {
-    canInstall: Boolean(installPrompt),
+    canInstall: Boolean(installPrompt) && !isInstalled,
+    isInstalled,
     install: () => promptInstall(installPrompt),
   };
 }

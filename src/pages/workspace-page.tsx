@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { SplitPanelLayout } from '@/components/ui/split-panel-layout';
+import { useToast } from '@/components/ui/toast-provider';
 import { RouteNavigationPanel } from '@/app/route-navigation-panel';
 import { ViewTabs } from '@/components/workspace/view-tabs';
 import { PaletteStrip } from '@/components/workspace/palette-strip';
@@ -24,6 +25,7 @@ import { ColorSwatchButton } from '@/components/color/color-swatch-button';
 import { usePaletteDerivations } from '@/hooks/use-palette-derivations';
 import { usePwaInstall } from '@/hooks/use-pwa-install';
 import { scientificColorFromString } from '@/domain/color/convert';
+import { applyDiagnosticQuickFix } from '@/domain/diagnostics/quick-fixes';
 import { templateCatalog } from '@/data/templates/catalog';
 import { templateToPalette } from '@/domain/templates/query-service';
 import type { PaletteClass, WorkspaceView } from '@/domain/models';
@@ -68,16 +70,18 @@ function SwatchSection({
 }
 
 export function WorkspacePage() {
-  const { t } = useTranslation(['common', 'workspace']);
+  const { t } = useTranslation(['common', 'workspace', 'diagnostics']);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { canInstall, install } = usePwaInstall();
+  const { pushToast } = useToast();
+  const { canInstall, isInstalled, install } = usePwaInstall();
   const currentPalette = useWorkspaceStore((state) => state.currentPalette);
   const selectedColorId = useWorkspaceStore((state) => state.selectedColorId);
   const selectedColor = useWorkspaceStore((state) => state.getSelectedColor());
   const activeView = useWorkspaceStore((state) => state.activeView);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const setCurrentPalette = useWorkspaceStore((state) => state.setCurrentPalette);
+  const applyTemplatePalette = useWorkspaceStore((state) => state.applyTemplatePalette);
   const generatePaletteFromBaseHex = useWorkspaceStore((state) => state.generatePaletteFromBaseHex);
   const selectColor = useWorkspaceStore((state) => state.selectColor);
   const setMainColor = useWorkspaceStore((state) => state.setMainColor);
@@ -128,7 +132,7 @@ export function WorkspacePage() {
     }
 
     const palette = templateToPalette(template);
-    setCurrentPalette(palette);
+    applyTemplatePalette(palette);
     markTemplateRecent(templateId);
     void remember('template', templateId, template.name, '/workspace');
     void setShowWelcome(false);
@@ -169,7 +173,7 @@ export function WorkspacePage() {
           />
         );
       case 'templates':
-        return <TemplateLibraryPanel onApplyTemplate={applyTemplate} />;
+        return <TemplateLibraryPanel currentPalette={currentPalette} onApplyTemplate={applyTemplate} />;
       case 'tone-ramp':
         return (
           <SwatchSection
@@ -201,7 +205,7 @@ export function WorkspacePage() {
       <SplitPanelLayout
         left={
           <>
-            <RouteNavigationPanel canInstall={canInstall} onInstall={() => void install()} />
+            <RouteNavigationPanel canInstall={canInstall} isInstalled={isInstalled} onInstall={() => void install()} />
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle>{t('workspace:paletteSetup')}</CardTitle>
@@ -290,8 +294,15 @@ export function WorkspacePage() {
         }
         right={
           <>
-            <DiagnosticsPanel diagnostics={diagnostics} />
             <AdjustmentHistoryPanel />
+            <DiagnosticsPanel
+              diagnostics={diagnostics}
+              onQuickFix={(fixId) => {
+                const nextPalette = applyDiagnosticQuickFix(currentPalette, fixId);
+                setCurrentPalette(nextPalette);
+                pushToast(t(`diagnostics:fix.${fixId}.label`));
+              }}
+            />
           </>
         }
       />

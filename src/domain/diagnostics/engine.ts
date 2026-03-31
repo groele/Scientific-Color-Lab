@@ -6,7 +6,16 @@ import {
   formatHex,
   wcagContrast,
 } from 'culori';
-import type { DiagnosticItem, DiagnosticThresholds, Palette, PaletteDiagnostics, ScientificColor } from '@/domain/models';
+import type {
+  DiagnosticItem,
+  DiagnosticQuickFix,
+  DiagnosticQuickFixId,
+  DiagnosticThresholds,
+  Palette,
+  PaletteDiagnostics,
+  PaletteDiagnosticsStatus,
+  ScientificColor,
+} from '@/domain/models';
 import { colorDistance, normalizeHue, scientificColorFromString } from '@/domain/color/convert';
 
 const defaultThresholds: DiagnosticThresholds = {
@@ -18,6 +27,109 @@ const defaultThresholds: DiagnosticThresholds = {
 
 function addDiagnostic(items: DiagnosticItem[], diagnostic: Omit<DiagnosticItem, 'id'>) {
   items.push({ ...diagnostic, id: crypto.randomUUID() });
+}
+
+function diagnosticsStatus(score: number, items: DiagnosticItem[]): PaletteDiagnosticsStatus {
+  if (items.some((item) => item.severity === 'error') || score < 68) {
+    return 'high-risk';
+  }
+
+  if (items.some((item) => item.severity === 'warning') || score < 88) {
+    return 'needs-attention';
+  }
+
+  return 'healthy';
+}
+
+function rankSeverity(severity: DiagnosticItem['severity']) {
+  switch (severity) {
+    case 'error':
+      return 3;
+    case 'warning':
+      return 2;
+    case 'info':
+    default:
+      return 1;
+  }
+}
+
+function deriveQuickFixes(items: DiagnosticItem[]): DiagnosticQuickFix[] {
+  const seen = new Set<DiagnosticQuickFixId>();
+  const fixes: DiagnosticQuickFix[] = [];
+
+  const register = (id: DiagnosticQuickFixId, relatedColorIds?: string[]) => {
+    if (seen.has(id)) {
+      return;
+    }
+
+    seen.add(id);
+    fixes.push({ id, relatedColorIds });
+  };
+
+  const byCode = (code: DiagnosticItem['code']) => items.find((item) => item.code === code);
+
+  const oversaturation = byCode('oversaturation-risk') ?? byCode('analyzer-oversaturated');
+  if (oversaturation) {
+    register('reduce-chroma', oversaturation.relatedColorIds);
+  }
+
+  const categorical = byCode('categorical-too-similar') ?? byCode('too-many-qualitative-colors');
+  if (categorical) {
+    register('increase-categorical-spacing', categorical.relatedColorIds);
+  }
+
+  const redGreen = byCode('red-green-conflict');
+  if (redGreen) {
+    register('replace-red-green-pair', redGreen.relatedColorIds);
+  }
+
+  const sequential = byCode('sequential-non-monotonic') ?? byCode('rainbow-risk');
+  if (sequential) {
+    register('rebuild-sequential-ramp', sequential.relatedColorIds);
+  }
+
+  const diverging = byCode('diverging-midpoint-chromatic');
+  if (diverging) {
+    register('rebalance-diverging-midpoint', diverging.relatedColorIds);
+  }
+
+  const cyclic = byCode('cyclic-endpoints-open');
+  if (cyclic) {
+    register('close-cyclic-endpoints', cyclic.relatedColorIds);
+  }
+
+  if (items.length > 0) {
+    register('suggest-safer-template', items.flatMap((item) => item.relatedColorIds ?? []));
+  }
+
+  return fixes;
+}
+
+function createSummary(score: number, status: PaletteDiagnosticsStatus, items: DiagnosticItem[]) {
+  const errors = items.filter((item) => item.severity === 'error').length;
+  const warnings = items.filter((item) => item.severity === 'warning').length;
+
+  if (status === 'healthy') {
+    return `Healthy · score ${score}`;
+  }
+
+  if (status === 'high-risk') {
+    return `${errors} high-risk issues · ${warnings} warnings · score ${score}`;
+  }
+
+  return `${warnings} warnings to review · score ${score}`;
+}
+
+export function buildPaletteDiagnostics(score: number, items: DiagnosticItem[]): PaletteDiagnostics {
+  const sortedItems = [...items].sort((left, right) => rankSeverity(right.severity) - rankSeverity(left.severity));
+  const status = diagnosticsStatus(score, sortedItems);
+  return {
+    score,
+    status,
+    summary: createSummary(score, status, sortedItems),
+    quickFixes: deriveQuickFixes(sortedItems),
+    items: sortedItems,
+  };
 }
 
 function isRedHue(hue: number) {
@@ -99,6 +211,7 @@ function checkContrast(colors: ScientificColor[], items: DiagnosticItem[], thres
     const contrast = wcagContrast(color.hex, background);
     if (contrast < thresholds.minimumContrast) {
       addDiagnostic(items, {
+        code: 'low-interface-contrast',
         severity: 'warning',
         category: 'contrast',
         title: 'Low interface contrast',
@@ -116,6 +229,7 @@ function checkCategoricalSimilarity(colors: ScientificColor[], items: Diagnostic
       const delta = colorDistance(color, candidate);
       if (delta < thresholds.categoricalDeltaE) {
         addDiagnostic(items, {
+          code: 'categorical-too-similar',
           severity: 'warning',
           category: 'categorical',
           title: 'Categorical colors are too similar',
@@ -132,6 +246,7 @@ function checkCategoricalSimilarity(colors: ScientificColor[], items: Diagnostic
 
       if (redGreenConflict) {
         addDiagnostic(items, {
+          code: 'red-green-conflict',
           severity: 'warning',
           category: 'accessibility',
           title: 'Red/green conflict risk',
@@ -148,6 +263,7 @@ function checkOversaturation(colors: ScientificColor[], items: DiagnosticItem[],
   colors.forEach((color) => {
     if (color.oklch.c > thresholds.maximumChroma) {
       addDiagnostic(items, {
+        code: 'oversaturation-risk',
         severity: 'warning',
         category: 'palette-risk',
         title: 'Oversaturation risk',
@@ -162,6 +278,7 @@ function checkOversaturation(colors: ScientificColor[], items: DiagnosticItem[],
 function checkPaletteClassRules(palette: Palette, items: DiagnosticItem[], thresholds: DiagnosticThresholds) {
   if (palette.class === 'qualitative' && palette.colors.length > thresholds.maxQualitativeColors) {
     addDiagnostic(items, {
+      code: 'too-many-qualitative-colors',
       severity: 'warning',
       category: 'palette-risk',
       title: 'Too many arbitrary categorical colors',
@@ -173,6 +290,7 @@ function checkPaletteClassRules(palette: Palette, items: DiagnosticItem[], thres
 
   if (palette.class === 'sequential' && !hasSequentialMonotonicLightness(palette.colors)) {
     addDiagnostic(items, {
+      code: 'sequential-non-monotonic',
       severity: 'error',
       category: 'sequential',
       title: 'Sequential lightness is non-monotonic',
@@ -186,6 +304,7 @@ function checkPaletteClassRules(palette: Palette, items: DiagnosticItem[], thres
   const midpoint = palette.colors[midpointIndex];
   if (palette.class === 'diverging' && midpoint && midpoint.oklch.c > 0.05) {
     addDiagnostic(items, {
+      code: 'diverging-midpoint-chromatic',
       severity: 'warning',
       category: 'diverging',
       title: 'Diverging midpoint is too chromatic',
@@ -200,6 +319,7 @@ function checkPaletteClassRules(palette: Palette, items: DiagnosticItem[], thres
     const last = palette.colors[palette.colors.length - 1];
     if (first && last && colorDistance(first, last) > 6) {
       addDiagnostic(items, {
+        code: 'cyclic-endpoints-open',
         severity: 'warning',
         category: 'cyclic',
         title: 'Cyclic endpoints are not continuous',
@@ -218,6 +338,7 @@ function checkRainbowRisk(colors: ScientificColor[], items: DiagnosticItem[]) {
 
   if (travel > 180 && spread > 180 && !hasSequentialMonotonicLightness(colors)) {
     addDiagnostic(items, {
+      code: 'rainbow-risk',
       severity: 'error',
       category: 'palette-risk',
       title: 'Jet / rainbow-like behavior detected',
@@ -238,17 +359,11 @@ export function evaluatePalette(palette: Palette, thresholds: DiagnosticThreshol
 
   const errorWeight = items.filter((item) => item.severity === 'error').length * 14;
   const warningWeight = items.filter((item) => item.severity === 'warning').length * 7;
-  return { score: Math.max(25, 100 - errorWeight - warningWeight), items };
+  return buildPaletteDiagnostics(Math.max(25, 100 - errorWeight - warningWeight), items);
 }
 
 export function diagnosticsSummary(diagnostics: PaletteDiagnostics) {
-  const errors = diagnostics.items.filter((item) => item.severity === 'error').length;
-  const warnings = diagnostics.items.filter((item) => item.severity === 'warning').length;
-  if (!errors && !warnings) {
-    return 'Scientifically responsible under the default checks.';
-  }
-
-  return `${errors} errors, ${warnings} warnings`;
+  return diagnostics.summary;
 }
 
 export const defaultDiagnosticThresholds = defaultThresholds;

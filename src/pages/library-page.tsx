@@ -18,7 +18,7 @@ import { useWorkspaceStore } from '@/stores/workspace-store';
 export function LibraryPage() {
   const { t } = useTranslation(['common', 'library']);
   const navigate = useNavigate();
-  const { canInstall, install } = usePwaInstall();
+  const { canInstall, isInstalled, install } = usePwaInstall();
   const palettes = useLibraryStore((state) => state.palettes);
   const favorites = useLibraryStore((state) => state.favorites);
   const recents = useLibraryStore((state) => state.recents);
@@ -85,7 +85,7 @@ export function LibraryPage() {
     <SplitPanelLayout
       left={
         <>
-          <RouteNavigationPanel canInstall={canInstall} onInstall={() => void install()} />
+          <RouteNavigationPanel canInstall={canInstall} isInstalled={isInstalled} onInstall={() => void install()} />
           <Card>
             <CardHeader className="pb-3">
               <CardTitle>{t('library:searchTitle')}</CardTitle>

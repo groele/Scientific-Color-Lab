@@ -130,7 +130,10 @@ export function AnalyzerPage() {
   const previewUrl = useAnalyzerStore((state) => state.previewUrl);
   const result = useAnalyzerStore((state) => state.result);
   const isAnalyzing = useAnalyzerStore((state) => state.isAnalyzing);
+  const analysisStatus = useAnalyzerStore((state) => state.analysisStatus);
+  const notice = useAnalyzerStore((state) => state.notice);
   const error = useAnalyzerStore((state) => state.error);
+  const errorCode = useAnalyzerStore((state) => state.errorCode);
   const options = useAnalyzerStore((state) => state.options);
   const clusterLayer = useAnalyzerStore((state) => state.clusterLayer);
   const selectedClusterId = useAnalyzerStore((state) => state.selectedClusterId);
@@ -169,6 +172,16 @@ export function AnalyzerPage() {
   const activePalette = paletteMode === 'raw' && rawPalette ? rawPalette : result?.suggestedPalette ?? null;
   const analyzerDiagnostics = useMemo(() => (result ? deriveAnalyzerDiagnostics(result, clusterLayer) : null), [clusterLayer, result]);
   const layerHeading = clusterLayer === 'detail' ? t('analyzer:detailLayer') : t('analyzer:summaryLayer');
+  const resolvedError =
+    errorCode === 'decode-failure'
+      ? t('analyzer:workerDecodeFailure')
+      : errorCode === 'canvas-unavailable'
+        ? t('analyzer:workerCanvasFailure')
+        : errorCode === 'worker-failure'
+          ? t('analyzer:workerFailure')
+          : error;
+  const noticeMessage =
+    notice === 'queued' ? t('analyzer:statusQueued') : notice === 'updated' ? t('analyzer:statusUpdated') : null;
 
   useEffect(() => {
     const handlePaste = (event: ClipboardEvent) => {
@@ -243,10 +256,18 @@ export function AnalyzerPage() {
             <div className="rounded-2xl border border-border/80 bg-panel p-4 text-sm text-foreground/70">{t('analyzer:analyzing')}</div>
           ) : null}
 
-          {error ? (
+          {analysisStatus === 'updated' && noticeMessage ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{noticeMessage}</div>
+          ) : null}
+
+          {analysisStatus === 'analyzing' && noticeMessage ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">{noticeMessage}</div>
+          ) : null}
+
+          {resolvedError ? (
             <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
               <AlertCircle className="mr-2 inline h-4 w-4" />
-              {error}
+              {resolvedError}
             </div>
           ) : null}
 

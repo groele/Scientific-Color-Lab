@@ -62,7 +62,7 @@ const SUMMARY_LABELS: Record<LanguageCode, Record<SummaryLabelKey, string>> = {
     notesSection: '备注',
     notSpecified: '未填写',
     none: '无',
-    includedPalettes: '包含的调色板：',
+    includedPalettes: '包含的调色板:',
   },
 };
 
@@ -347,7 +347,23 @@ function extensionForFormat(format: ExportFormat) {
   }
 }
 
+function validateExportInput(scope: ExportScope, palette?: Palette, color?: ColorToken, project?: Project) {
+  if (scope === 'color' && !color) {
+    throw new Error('Missing export color.');
+  }
+
+  if (scope === 'palette' && !palette) {
+    throw new Error('Missing export palette.');
+  }
+
+  if (scope === 'project' && !project) {
+    throw new Error('Missing export project.');
+  }
+}
+
 export function buildExportPayload({ profile, palette, color, project, projectPalettes = [] }: ExportInput): ExportPayload {
+  validateExportInput(profile.scope, palette, color, project);
+
   const baseName = project?.name ?? palette?.name ?? color?.name ?? 'scientific-color-lab';
   const filename = profile.filenameTemplate
     .replace('{name}', slugify(baseName))

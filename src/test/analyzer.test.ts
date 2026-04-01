@@ -27,6 +27,7 @@ describe('image analyzer', () => {
     const pixels = buildPixels();
 
     const result = analyzePixels({
+      requestId: 'fixture-request',
       imageId: 'fixture-image',
       sourceWidth: 26,
       sourceHeight: 4,
@@ -54,6 +55,7 @@ describe('image analyzer', () => {
     const pixels = buildPixels();
 
     const result = analyzePixels({
+      requestId: 'long-tail-request',
       imageId: 'long-tail-image',
       sourceWidth: 26,
       sourceHeight: 4,
@@ -80,6 +82,7 @@ describe('image analyzer', () => {
     const pixels = buildPixels();
 
     const compactResult = analyzePixels({
+      requestId: 'compact-request',
       imageId: 'compact-image',
       sourceWidth: 26,
       sourceHeight: 4,
@@ -93,6 +96,7 @@ describe('image analyzer', () => {
     });
 
     const completeResult = analyzePixels({
+      requestId: 'complete-request',
       imageId: 'complete-image',
       sourceWidth: 26,
       sourceHeight: 4,

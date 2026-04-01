@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import '@/i18n';
 import { i18n } from '@/i18n';
+import { ensureLanguageResources } from '@/i18n/resources';
 import { LibraryPage } from '@/pages/library-page';
 import { SettingsPage } from '@/pages/settings-page';
 
@@ -28,6 +29,7 @@ describe('Library and Settings pages', () => {
   });
 
   it('renders the settings workflow structure in Chinese', async () => {
+    await ensureLanguageResources(i18n, 'zh-CN');
     await i18n.changeLanguage('zh-CN');
 
     const view = render(

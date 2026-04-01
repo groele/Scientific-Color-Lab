@@ -3,6 +3,8 @@ import type { DiagnosticThresholds } from '@/domain/models';
 import { defaultDiagnosticThresholds } from '@/domain/diagnostics/engine';
 import { settingsRepository } from '@/db/repositories';
 
+let persistTimer: number | null = null;
+
 interface DiagnosticsState {
   thresholds: DiagnosticThresholds;
   hydrated: boolean;
@@ -25,10 +27,12 @@ export const useDiagnosticsStore = create<DiagnosticsState>((set, get) => ({
   setThreshold: async (key, value) => {
     const thresholds = { ...get().thresholds, [key]: value };
     set({ thresholds });
-    const current = await settingsRepository.load();
-    await settingsRepository.save({
-      copyFormat: current?.copyFormat ?? 'hex',
-      thresholds,
-    });
+    if (persistTimer) {
+      window.clearTimeout(persistTimer);
+    }
+
+    persistTimer = window.setTimeout(() => {
+      void settingsRepository.save({ thresholds });
+    }, 250);
   },
 }));

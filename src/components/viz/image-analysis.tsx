@@ -127,9 +127,9 @@ export function AnalyzerControlsCard({
               value={options.detailLevel}
               onChange={(event) => onOptionsChange({ detailLevel: event.target.value as AnalyzerDetailLevel })}
             >
-              <option value="compact">Compact</option>
-              <option value="balanced">Balanced</option>
-              <option value="complete">Complete</option>
+              <option value="compact">{t('analyzer:modeCompact')}</option>
+              <option value="balanced">{t('analyzer:modeBalanced')}</option>
+              <option value="complete">{t('analyzer:modeComplete')}</option>
             </Select>
           </label>
 
@@ -137,9 +137,7 @@ export function AnalyzerControlsCard({
             <span className="section-label">{t('analyzer:maxColors')}</span>
             <Select
               value={String(options.maxColors)}
-              onChange={(event) =>
-                onOptionsChange({ maxColors: Number(event.target.value) as AnalyzerOptions['maxColors'] })
-              }
+              onChange={(event) => onOptionsChange({ maxColors: Number(event.target.value) as AnalyzerOptions['maxColors'] })}
             >
               {[8, 12, 16, 24].map((value) => (
                 <option key={value} value={value}>
@@ -161,21 +159,21 @@ export function AnalyzerControlsCard({
         <div className="grid gap-3 rounded-2xl border border-border/80 bg-muted/25 p-3 text-sm md:grid-cols-2 xl:grid-cols-4">
           <div>
             <div className="section-label">{t('analyzer:processedPixels')}</div>
-            <div className="mt-1 font-medium text-foreground">{stats?.opaquePixels?.toLocaleString() ?? '—'}</div>
+            <div className="mt-1 font-medium text-foreground">{stats?.opaquePixels?.toLocaleString() ?? '--'}</div>
           </div>
           <div>
             <div className="section-label">{t('analyzer:histogramBins')}</div>
-            <div className="mt-1 font-medium text-foreground">{stats?.histogramBins?.toLocaleString() ?? '—'}</div>
+            <div className="mt-1 font-medium text-foreground">{stats?.histogramBins?.toLocaleString() ?? '--'}</div>
           </div>
           <div>
             <div className="section-label">{t('analyzer:detailSummary')}</div>
             <div className="mt-1 font-medium text-foreground">
-              {stats ? `${stats.detailClusterCount} / ${stats.summaryClusterCount}` : '—'}
+              {stats ? `${stats.detailClusterCount} / ${stats.summaryClusterCount}` : '--'}
             </div>
           </div>
           <div>
             <div className="section-label">{t('analyzer:resizeScale')}</div>
-            <div className="mt-1 font-medium text-foreground">{stats ? `${Math.round(stats.resizeScale * 100)}%` : '—'}</div>
+            <div className="mt-1 font-medium text-foreground">{stats ? `${Math.round(stats.resizeScale * 100)}%` : '--'}</div>
           </div>
         </div>
       </CardContent>

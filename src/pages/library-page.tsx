@@ -45,6 +45,8 @@ export function LibraryPage() {
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [newTagLabel, setNewTagLabel] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [projectDraft, setProjectDraft] = useState({ name: '', description: '', notes: '' });
+  const [projectDraftState, setProjectDraftState] = useState<'clean' | 'dirty' | 'saving' | 'saved' | 'error'>('clean');
 
   useEffect(() => {
     if (!projects.length) {
@@ -98,6 +100,67 @@ export function LibraryPage() {
     () => projects.find((project) => project.id === selectedProjectId),
     [projects, selectedProjectId],
   );
+  const projectDraftDirty =
+    !!selectedProject &&
+    (projectDraft.name !== selectedProject.name ||
+      projectDraft.description !== (selectedProject.description ?? '') ||
+      projectDraft.notes !== (selectedProject.notes ?? ''));
+
+  useEffect(() => {
+    if (!selectedProject) {
+      setProjectDraft({ name: '', description: '', notes: '' });
+      setProjectDraftState('clean');
+      return;
+    }
+
+    setProjectDraft({
+      name: selectedProject.name,
+      description: selectedProject.description ?? '',
+      notes: selectedProject.notes ?? '',
+    });
+    setProjectDraftState('clean');
+  }, [selectedProject?.id]);
+
+  useEffect(() => {
+    if (!selectedProject || !projectDraftDirty) {
+      return;
+    }
+
+    setProjectDraftState('dirty');
+    const timer = window.setTimeout(async () => {
+      setProjectDraftState('saving');
+      try {
+        await updateProject(selectedProject.id, {
+          name: projectDraft.name.trim() || selectedProject.name,
+          description: projectDraft.description,
+          notes: projectDraft.notes,
+        });
+        setProjectDraftState('saved');
+      } catch {
+        setProjectDraftState('error');
+      }
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [projectDraft.description, projectDraft.name, projectDraft.notes, projectDraftDirty, selectedProject, updateProject]);
+
+  const commitProjectDraft = async () => {
+    if (!selectedProject || !projectDraftDirty) {
+      return;
+    }
+
+    setProjectDraftState('saving');
+    try {
+      await updateProject(selectedProject.id, {
+        name: projectDraft.name.trim() || selectedProject.name,
+        description: projectDraft.description,
+        notes: projectDraft.notes,
+      });
+      setProjectDraftState('saved');
+    } catch {
+      setProjectDraftState('error');
+    }
+  };
 
   const selectedProjectAssets = useMemo(
     () => assets.filter((asset) => asset.projectId === selectedProject?.id),
@@ -217,19 +280,22 @@ export function LibraryPage() {
                   {selectedProject ? (
                     <div className="grid gap-3">
                       <Input
-                        value={selectedProject.name}
-                        onChange={(event) => void updateProject(selectedProject.id, { name: event.target.value })}
+                        value={projectDraft.name}
+                        onChange={(event) => setProjectDraft((current) => ({ ...current, name: event.target.value }))}
+                        onBlur={() => void commitProjectDraft()}
                         placeholder={t('library:projectName')}
                       />
                       <Input
-                        value={selectedProject.description ?? ''}
-                        onChange={(event) => void updateProject(selectedProject.id, { description: event.target.value })}
+                        value={projectDraft.description}
+                        onChange={(event) => setProjectDraft((current) => ({ ...current, description: event.target.value }))}
+                        onBlur={() => void commitProjectDraft()}
                         placeholder={t('library:projectDescription')}
                       />
                       <Textarea
                         className="min-h-[108px]"
-                        value={selectedProject.notes ?? ''}
-                        onChange={(event) => void updateProject(selectedProject.id, { notes: event.target.value })}
+                        value={projectDraft.notes}
+                        onChange={(event) => setProjectDraft((current) => ({ ...current, notes: event.target.value }))}
+                        onBlur={() => void commitProjectDraft()}
                         placeholder={t('library:projectNotes')}
                       />
                       <div className="grid gap-3 md:grid-cols-[1fr_auto]">
@@ -427,6 +493,17 @@ export function LibraryPage() {
                     <div>
                       {t('common:palette')}: {selectedProjectPalettes.length}
                     </div>
+                  </div>
+                  <div className="rounded-xl border border-border/80 bg-muted/25 p-3 text-xs text-foreground/60">
+                    {projectDraftState === 'saving'
+                      ? t('library:draftSaving')
+                      : projectDraftState === 'saved'
+                        ? t('library:draftSaved')
+                        : projectDraftState === 'error'
+                          ? t('library:draftSaveFailed')
+                          : projectDraftState === 'dirty'
+                            ? t('library:draftUnsaved')
+                            : t('common:none')}
                   </div>
                   <div className="rounded-xl border border-border/80 bg-muted/25 p-3">
                     <div className="section-label">{t('library:linkedPalettes')}</div>

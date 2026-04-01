@@ -21,7 +21,7 @@ function samplePalette(): Palette {
     class: 'qualitative',
     colors,
     baseColorId: colors[0]!.id,
-    diagnostics: { score: 100, status: 'healthy', summary: 'Healthy · score 100', quickFixes: [], items: [] },
+    diagnostics: { score: 100, status: 'healthy', summary: 'Healthy score 100', quickFixes: [], items: [] },
     tags: ['study', 'test'],
     notes: 'palette note',
     provenance: { source: 'manual', reference: 'test' },
@@ -86,5 +86,23 @@ describe('export service', () => {
     expect(payload.content).toContain('"palettes"');
     expect(payload.content).toContain('Sample Palette');
     expect(payload.content).toContain('Project One');
+  });
+
+  it('rejects invalid export sources instead of producing mismatched preview content', () => {
+    const profile: ExportProfile = {
+      id: 'profile-empty',
+      name: 'Empty',
+      scope: 'project',
+      format: 'summary',
+      language: 'en',
+      includeMetadata: true,
+      includeTags: true,
+      notesBehavior: 'inline',
+      filenameTemplate: '{name}-{format}',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    expect(() => buildExportPayload({ profile })).toThrow('Missing export project.');
   });
 });

@@ -4,6 +4,7 @@ import type {
   FavoriteKind,
   FavoriteRef,
   Palette,
+  PaletteImportResult,
   Project,
   ProjectAsset,
   RecentEntry,
@@ -20,8 +21,8 @@ import {
   recentRepository,
   tagRepository,
 } from '@/db/repositories';
-import { createId, scientificColorFromString } from '@/domain/color/convert';
-import { paletteFromColors } from '@/domain/color/palette';
+import { createId } from '@/domain/color/convert';
+import { importPaletteFromCsv, importPaletteFromJson } from '@/domain/library/import';
 
 let hydrationPromise: Promise<void> | null = null;
 
@@ -83,34 +84,6 @@ function defaultExportProfiles(): ExportProfile[] {
   ];
 }
 
-function parseCsvPalette(text: string) {
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  const colors = lines
-    .slice(1)
-    .map((line) => line.split(','))
-    .filter((parts) => parts[1])
-    .map((parts, index) =>
-      scientificColorFromString(parts[1]!, {
-        id: createId('import'),
-        name: parts[0] || `Imported ${index + 1}`,
-        source: { kind: 'imported', detail: 'csv' },
-        tags: ['import'],
-        usage: ['imported'],
-        notes: '',
-      }),
-    );
-
-  if (!colors.length) {
-    return null;
-  }
-
-  return paletteFromColors('Imported CSV Palette', 'qualitative', colors, 'import');
-}
-
 function paletteAssetFromPalette(palette: Palette, projectId: string): ProjectAsset {
   return {
     id: `asset-${palette.id}`,
@@ -153,7 +126,7 @@ interface LibraryState {
   updateProject: (projectId: string, updates: Partial<Omit<Project, 'id' | 'createdAt'>>) => Promise<void>;
   saveTag: (label: string) => Promise<Tag>;
   deleteTag: (tagId: string) => Promise<void>;
-  importText: (text: string, format: 'json' | 'csv') => Promise<Palette | null>;
+  importText: (text: string, format: 'json' | 'csv') => Promise<PaletteImportResult>;
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
@@ -348,18 +321,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }));
   },
   importText: async (text, format) => {
-    try {
-      const palette = format === 'json' ? (JSON.parse(text) as Palette) : parseCsvPalette(text);
+    const result = format === 'json' ? importPaletteFromJson(text) : importPaletteFromCsv(text);
 
-      if (!palette) {
-        return null;
-      }
-
-      await paletteRepository.save(palette);
-      set((state) => ({ palettes: upsertById(state.palettes, palette) }));
-      return palette;
-    } catch {
-      return null;
+    if (!result.palette) {
+      return result;
     }
+
+    await paletteRepository.save(result.palette);
+    set((state) => ({ palettes: upsertById(state.palettes, result.palette!) }));
+    return result;
   },
 }));

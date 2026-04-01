@@ -7,6 +7,15 @@ const maxDimensionByMode: Record<AnalyzerOptions['detailLevel'], number> = {
   complete: 560,
 };
 
+export class ImageAnalysisClientError extends Error {
+  code: 'decode-failure' | 'canvas-unavailable' | 'worker-failure' | 'stale-result-discarded';
+
+  constructor(code: ImageAnalysisClientError['code'], message: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
 function getWorker() {
   if (!worker) {
     worker = new Worker(new URL('../workers/image-analysis.worker.ts', import.meta.url), { type: 'module' });
@@ -31,7 +40,7 @@ function drawToCanvas(
   const context = canvas.getContext('2d');
 
   if (!context) {
-    throw new Error('Canvas 2D context is unavailable.');
+    throw new ImageAnalysisClientError('canvas-unavailable', 'Canvas 2D context is unavailable.');
   }
 
   context.drawImage(drawable, 0, 0, width, height);
@@ -53,7 +62,7 @@ async function loadWithHtmlImage(file: Blob, options: AnalyzerOptions) {
     const image = await new Promise<HTMLImageElement>((resolve, reject) => {
       const element = new Image();
       element.onload = () => resolve(element);
-      element.onerror = () => reject(new Error('The source image could not be decoded.'));
+      element.onerror = () => reject(new ImageAnalysisClientError('decode-failure', 'The source image could not be decoded.'));
       element.src = url;
     });
 
@@ -67,12 +76,19 @@ export function analyzePixelsWithWorker(payload: AnalyzerWorkerRequest) {
   return new Promise<ImageAnalysisResult>((resolve, reject) => {
     const currentWorker = getWorker();
     const handleMessage = (event: MessageEvent<AnalyzerWorkerResponse>) => {
+      if (event.data.requestId !== payload.requestId) {
+        return;
+      }
       cleanup();
       resolve(event.data.result);
     };
     const handleError = (error: ErrorEvent) => {
       cleanup();
-      reject(error.error ?? new Error(error.message));
+      reject(
+        error.error instanceof Error
+          ? error.error
+          : new ImageAnalysisClientError('worker-failure', error.message || 'Image analysis worker failed.'),
+      );
     };
     const cleanup = () => {
       currentWorker.removeEventListener('message', handleMessage);

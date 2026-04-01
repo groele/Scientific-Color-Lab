@@ -8,14 +8,15 @@ const LibraryPage = lazy(() => import('@/pages/library-page').then((module) => (
 const AnalyzerPage = lazy(() => import('@/pages/analyzer-page').then((module) => ({ default: module.AnalyzerPage })));
 const ExportCenterPage = lazy(() => import('@/pages/export-center-page').then((module) => ({ default: module.ExportCenterPage })));
 const SettingsPage = lazy(() => import('@/pages/settings-page').then((module) => ({ default: module.SettingsPage })));
+const NotFoundPage = lazy(() => import('@/pages/not-found-page').then((module) => ({ default: module.NotFoundPage })));
 const routerBase = import.meta.env.BASE_URL.replace(/\/+$/, '') || '/';
 const useHashRouter = import.meta.env.BASE_URL !== '/';
 
-function Layout() {
+function Layout({ bootstrapIssues = [] }: { bootstrapIssues?: string[] }) {
   const { t } = useTranslation(['common']);
 
   return (
-    <AppShell>
+    <AppShell bootstrapIssues={bootstrapIssues}>
       <Suspense fallback={<div className="rounded-2xl border border-border/80 bg-panel p-6 text-sm text-foreground/65">{t('common:loadingWorkspace')}</div>}>
         <Outlet />
       </Suspense>
@@ -23,14 +24,14 @@ function Layout() {
   );
 }
 
-export function AppRoutes() {
+export function AppRoutes({ bootstrapIssues = [] }: { bootstrapIssues?: string[] }) {
   const Router = useHashRouter ? HashRouter : BrowserRouter;
   const routerProps = useHashRouter ? {} : { basename: routerBase };
 
   return (
     <Router {...routerProps}>
       <Routes>
-        <Route element={<Layout />}>
+        <Route element={<Layout bootstrapIssues={bootstrapIssues} />}>
           <Route index element={<Navigate to="/workspace" replace />} />
           <Route path="/workspace" element={<WorkspacePage />} />
           <Route path="/library" element={<LibraryPage />} />
@@ -39,6 +40,7 @@ export function AppRoutes() {
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/studio" element={<Navigate to="/workspace" replace />} />
           <Route path="/generators" element={<Navigate to="/workspace?view=chart-preview" replace />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
     </Router>

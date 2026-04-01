@@ -1,11 +1,11 @@
-import { Download, Languages } from 'lucide-react';
+import { Download } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { SystemStatusBar } from '@/app/system-status-bar';
 
-export function AppShell({ children }: { children?: React.ReactNode }) {
+export function AppShell({ children, bootstrapIssues }: { children?: React.ReactNode; bootstrapIssues?: string[] }) {
   const { t } = useTranslation(['common']);
-  const location = useLocation();
 
   return (
     <div className="mx-auto flex min-h-screen max-w-[1760px] flex-col px-4 py-5 lg:px-6">
@@ -19,18 +19,15 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
         </div>
         <div className="flex flex-wrap items-center gap-2 text-sm text-foreground/60">
           <span className="inline-flex items-center gap-2 rounded-full border border-border bg-panel px-3 py-1.5">
-            <Languages className="h-4 w-4" />
-            {t('common:bilingualUi')}
-          </span>
-          <span className="inline-flex items-center gap-2 rounded-full border border-border bg-panel px-3 py-1.5">
             <Download className="h-4 w-4" />
-            {t('common:currentRoute')}: {location.pathname}
+            {t('common:bilingualUi')}
           </span>
           <Button size="sm" variant="outline" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
             {t('common:top')}
           </Button>
         </div>
       </header>
+      <SystemStatusBar bootstrapIssues={bootstrapIssues} />
       {children ?? <Outlet />}
     </div>
   );

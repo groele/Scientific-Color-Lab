@@ -330,6 +330,16 @@ export interface ImageAnalysisResult {
   stats: ImageAnalysisStats;
 }
 
+export type ImportStatus = 'success' | 'partial' | 'failed';
+
+export interface PaletteImportResult {
+  status: ImportStatus;
+  palette: Palette | null;
+  importedRows: number;
+  skippedRows: number;
+  message?: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -485,6 +495,7 @@ export interface RawPresetPalette {
 }
 
 export interface AnalyzerWorkerRequest {
+  requestId: string;
   imageId: string;
   sourceWidth: number;
   sourceHeight: number;
@@ -495,5 +506,6 @@ export interface AnalyzerWorkerRequest {
 }
 
 export interface AnalyzerWorkerResponse {
+  requestId: string;
   result: ImageAnalysisResult;
 }

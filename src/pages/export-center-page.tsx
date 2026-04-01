@@ -12,11 +12,30 @@ import { useToast } from '@/components/ui/toast-provider';
 import { createId } from '@/domain/color/convert';
 import { buildExportPayload, createExportRecord } from '@/domain/export/service';
 import type { ExportFormat, ExportProfile, ExportScope, LanguageCode, NotesBehavior } from '@/domain/models';
-import { downloadText } from '@/lib/utils';
 import { useLibraryHydration } from '@/hooks/use-library-hydration';
 import { usePwaInstall } from '@/hooks/use-pwa-install';
+import { downloadText } from '@/lib/utils';
 import { useLibraryStore } from '@/stores/library-store';
 import { useWorkspaceStore } from '@/stores/workspace-store';
+
+type ProfileDraftState = 'clean' | 'dirty' | 'saving' | 'saved' | 'error';
+
+const formatLabelKeyByFormat: Record<ExportFormat, string> = {
+  json: 'exports:formatJson',
+  csv: 'exports:formatCsv',
+  css: 'exports:formatCss',
+  tailwind: 'exports:formatTailwind',
+  matplotlib: 'exports:formatMatplotlib',
+  plotly: 'exports:formatPlotly',
+  matlab: 'exports:formatMatlab',
+  summary: 'exports:formatSummary',
+};
+
+const scopeLabelKeyByScope: Record<ExportScope, string> = {
+  color: 'exports:scopeColor',
+  palette: 'exports:scopePalette',
+  project: 'exports:scopeProject',
+};
 
 function createDraftProfile(name: string, base?: ExportProfile): ExportProfile {
   const now = new Date().toISOString();
@@ -37,6 +56,19 @@ function createDraftProfile(name: string, base?: ExportProfile): ExportProfile {
   );
 }
 
+function normalizeProfile(profile: ExportProfile) {
+  return JSON.stringify({
+    name: profile.name,
+    scope: profile.scope,
+    format: profile.format,
+    language: profile.language,
+    includeMetadata: profile.includeMetadata,
+    includeTags: profile.includeTags,
+    notesBehavior: profile.notesBehavior,
+    filenameTemplate: profile.filenameTemplate,
+  });
+}
+
 export function ExportCenterPage() {
   const { t } = useTranslation(['common', 'exports']);
   const { pushToast } = useToast();
@@ -54,15 +86,22 @@ export function ExportCenterPage() {
 
   const [profileId, setProfileId] = useState(exportProfiles[0]?.id ?? '');
   const [draftProfile, setDraftProfile] = useState<ExportProfile>(createDraftProfile(t('exports:newProfileName'), exportProfiles[0]));
+  const [draftBaseline, setDraftBaseline] = useState<ExportProfile | null>(exportProfiles[0] ?? null);
+  const [draftState, setDraftState] = useState<ProfileDraftState>('clean');
   const [projectId, setProjectId] = useState(projects[0]?.id ?? '');
   const [paletteId, setPaletteId] = useState(currentPalette.id);
 
+  const activeProfile = exportProfiles.find((profile) => profile.id === profileId) ?? null;
+
   useEffect(() => {
-    const activeProfile = exportProfiles.find((profile) => profile.id === profileId);
-    if (activeProfile) {
-      setDraftProfile(activeProfile);
+    if (!activeProfile) {
+      return;
     }
-  }, [exportProfiles, profileId]);
+
+    setDraftProfile(activeProfile);
+    setDraftBaseline(activeProfile);
+    setDraftState('clean');
+  }, [activeProfile]);
 
   useEffect(() => {
     if (!paletteId) {
@@ -83,8 +122,8 @@ export function ExportCenterPage() {
     }
 
     if (routeState.scope) {
-      const scope = routeState.scope;
-      setDraftProfile((current) => ({ ...current, scope }));
+      setDraftProfile((current) => ({ ...current, scope: routeState.scope! }));
+      setDraftState('dirty');
     }
 
     if (routeState.paletteId) {
@@ -107,17 +146,53 @@ export function ExportCenterPage() {
     [palettes, selectedProject?.id],
   );
 
-  const payload = useMemo(
-    () =>
-      buildExportPayload({
-        profile: draftProfile,
-        palette: draftProfile.scope === 'palette' ? selectedPalette : currentPalette,
-        color: draftProfile.scope === 'color' ? selectedColor : undefined,
-        project: draftProfile.scope === 'project' ? selectedProject : undefined,
-        projectPalettes: draftProfile.scope === 'project' ? projectPalettes : [],
-      }),
-    [currentPalette, draftProfile, projectPalettes, selectedColor, selectedPalette, selectedProject],
-  );
+  const updateDraftProfile = (updater: (current: ExportProfile) => ExportProfile) => {
+    setDraftProfile((current) => {
+      const next = updater(current);
+      const baselineMatches = draftBaseline ? normalizeProfile(next) === normalizeProfile(draftBaseline) : false;
+      setDraftState(baselineMatches ? 'clean' : 'dirty');
+      return next;
+    });
+  };
+
+  const payloadState = useMemo(() => {
+    try {
+      return {
+        payload: buildExportPayload({
+          profile: draftProfile,
+          palette: draftProfile.scope === 'palette' ? selectedPalette : currentPalette,
+          color: draftProfile.scope === 'color' ? selectedColor : undefined,
+          project: draftProfile.scope === 'project' ? selectedProject : undefined,
+          projectPalettes: draftProfile.scope === 'project' ? projectPalettes : [],
+        }),
+        error: null,
+      };
+    } catch (error) {
+      return {
+        payload: null,
+        error: error instanceof Error ? error.message : t('exports:invalidSource'),
+      };
+    }
+  }, [currentPalette, draftProfile, projectPalettes, selectedColor, selectedPalette, selectedProject, t]);
+
+  const previewHeader = t('exports:previewHeader', {
+    format: t(formatLabelKeyByFormat[draftProfile.format]),
+    scope: t(scopeLabelKeyByScope[draftProfile.scope]),
+    language: draftProfile.language === 'zh-CN' ? t('exports:languageChinese') : t('exports:languageEnglish'),
+  });
+
+  const statusMessage =
+    !libraryHydrated
+      ? t('common:loadingWorkspace')
+      : draftState === 'saving'
+        ? t('exports:draftSaving')
+        : draftState === 'saved'
+          ? t('exports:draftClean')
+          : draftState === 'error'
+            ? t('exports:draftError')
+            : draftState === 'dirty'
+              ? t('exports:draftDirty')
+              : t('exports:draftClean');
 
   const saveProfile = async () => {
     const profile = {
@@ -125,26 +200,53 @@ export function ExportCenterPage() {
       updatedAt: new Date().toISOString(),
       createdAt: draftProfile.createdAt || new Date().toISOString(),
     };
-    await saveExportProfile(profile);
-    setProfileId(profile.id);
-    pushToast(t('exports:profileSaved'));
+
+    setDraftState('saving');
+    try {
+      await saveExportProfile(profile);
+      setDraftProfile(profile);
+      setDraftBaseline(profile);
+      setProfileId(profile.id);
+      setDraftState('saved');
+      pushToast(t('exports:profileSaved'));
+    } catch {
+      setDraftState('error');
+      pushToast(t('exports:draftError'));
+    }
   };
 
   const runExport = async () => {
-    downloadText(payload.filename, payload.content);
-    await saveExport(
-      createExportRecord(
-        draftProfile,
-        payload,
-        draftProfile.scope,
-        draftProfile.language,
-        draftProfile.scope === 'palette' ? selectedPalette : currentPalette,
-        draftProfile.scope === 'color' ? selectedColor : undefined,
-        draftProfile.scope === 'project' ? selectedProject : undefined,
-      ),
-    );
-    await remember('palette', selectedPalette.id, selectedPalette.name, '/exports');
-    pushToast(t('exports:exportSaved', { filename: payload.filename }));
+    if (!payloadState.payload) {
+      pushToast(payloadState.error ?? t('exports:invalidSource'));
+      return;
+    }
+
+    try {
+      downloadText(payloadState.payload.filename, payloadState.payload.content);
+      await saveExport(
+        createExportRecord(
+          draftProfile,
+          payloadState.payload,
+          draftProfile.scope,
+          draftProfile.language,
+          draftProfile.scope === 'palette' ? selectedPalette : currentPalette,
+          draftProfile.scope === 'color' ? selectedColor : undefined,
+          draftProfile.scope === 'project' ? selectedProject : undefined,
+        ),
+      );
+
+      if (draftProfile.scope === 'project' && selectedProject) {
+        await remember('project', selectedProject.id, selectedProject.name, '/exports');
+      } else if (draftProfile.scope === 'color' && selectedColor) {
+        await remember('color', selectedColor.id, selectedColor.name, '/exports');
+      } else {
+        await remember('palette', selectedPalette.id, selectedPalette.name, '/exports');
+      }
+
+      pushToast(t('exports:exportSaved', { filename: payloadState.payload.filename }));
+    } catch {
+      pushToast(t('exports:draftError'));
+    }
   };
 
   return (
@@ -170,7 +272,9 @@ export function ExportCenterPage() {
                 onClick={() => {
                   const profile = createDraftProfile(t('exports:newProfileName'));
                   setDraftProfile(profile);
+                  setDraftBaseline(null);
                   setProfileId(profile.id);
+                  setDraftState('dirty');
                 }}
               >
                 {t('exports:createProfile')}
@@ -183,7 +287,7 @@ export function ExportCenterPage() {
               <CardTitle>{t('exports:sourceSelection')}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <Select value={draftProfile.scope} onChange={(event) => setDraftProfile((current) => ({ ...current, scope: event.target.value as ExportScope }))}>
+              <Select value={draftProfile.scope} onChange={(event) => updateDraftProfile((current) => ({ ...current, scope: event.target.value as ExportScope }))}>
                 <option value="color">{t('exports:scopeColor')}</option>
                 <option value="palette">{t('exports:scopePalette')}</option>
                 <option value="project">{t('exports:scopeProject')}</option>
@@ -235,7 +339,7 @@ export function ExportCenterPage() {
                 <div className="section-label">{t('exports:exportTargets')}</div>
                 <div className="mt-3 space-y-2">
                   <div>
-                    {t('exports:currentColor')}: {selectedColor.name}
+                    {t('exports:currentColor')}: {selectedColor?.name ?? t('common:none')}
                   </div>
                   <div>
                     {t('exports:currentPalette')}: {selectedPalette.name}
@@ -260,16 +364,16 @@ export function ExportCenterPage() {
             <CardContent className="grid gap-3 xl:grid-cols-2">
               <Input
                 value={draftProfile.name}
-                onChange={(event) => setDraftProfile((current) => ({ ...current, name: event.target.value }))}
+                onChange={(event) => updateDraftProfile((current) => ({ ...current, name: event.target.value }))}
                 placeholder={t('exports:profileName')}
               />
               <Input
                 value={draftProfile.filenameTemplate}
-                onChange={(event) => setDraftProfile((current) => ({ ...current, filenameTemplate: event.target.value }))}
+                onChange={(event) => updateDraftProfile((current) => ({ ...current, filenameTemplate: event.target.value }))}
                 placeholder={t('exports:filenameTemplate')}
               />
 
-              <Select value={draftProfile.format} onChange={(event) => setDraftProfile((current) => ({ ...current, format: event.target.value as ExportFormat }))}>
+              <Select value={draftProfile.format} onChange={(event) => updateDraftProfile((current) => ({ ...current, format: event.target.value as ExportFormat }))}>
                 <option value="json">{t('exports:formatJson')}</option>
                 <option value="csv">{t('exports:formatCsv')}</option>
                 <option value="css">{t('exports:formatCss')}</option>
@@ -282,7 +386,7 @@ export function ExportCenterPage() {
 
               <Select
                 value={draftProfile.language}
-                onChange={(event) => setDraftProfile((current) => ({ ...current, language: event.target.value as LanguageCode }))}
+                onChange={(event) => updateDraftProfile((current) => ({ ...current, language: event.target.value as LanguageCode }))}
               >
                 <option value="en">{t('exports:languageEnglish')}</option>
                 <option value="zh-CN">{t('exports:languageChinese')}</option>
@@ -290,23 +394,31 @@ export function ExportCenterPage() {
 
               <Select
                 value={draftProfile.includeMetadata ? 'yes' : 'no'}
-                onChange={(event) => setDraftProfile((current) => ({ ...current, includeMetadata: event.target.value === 'yes' }))}
+                onChange={(event) => updateDraftProfile((current) => ({ ...current, includeMetadata: event.target.value === 'yes' }))}
               >
-                <option value="yes">{t('exports:includeMetadata')}: {t('common:yes')}</option>
-                <option value="no">{t('exports:includeMetadata')}: {t('common:no')}</option>
+                <option value="yes">
+                  {t('exports:includeMetadata')}: {t('common:yes')}
+                </option>
+                <option value="no">
+                  {t('exports:includeMetadata')}: {t('common:no')}
+                </option>
               </Select>
 
               <Select
                 value={draftProfile.includeTags ? 'yes' : 'no'}
-                onChange={(event) => setDraftProfile((current) => ({ ...current, includeTags: event.target.value === 'yes' }))}
+                onChange={(event) => updateDraftProfile((current) => ({ ...current, includeTags: event.target.value === 'yes' }))}
               >
-                <option value="yes">{t('exports:includeTags')}: {t('common:yes')}</option>
-                <option value="no">{t('exports:includeTags')}: {t('common:no')}</option>
+                <option value="yes">
+                  {t('exports:includeTags')}: {t('common:yes')}
+                </option>
+                <option value="no">
+                  {t('exports:includeTags')}: {t('common:no')}
+                </option>
               </Select>
 
               <Select
                 value={draftProfile.notesBehavior}
-                onChange={(event) => setDraftProfile((current) => ({ ...current, notesBehavior: event.target.value as NotesBehavior }))}
+                onChange={(event) => updateDraftProfile((current) => ({ ...current, notesBehavior: event.target.value as NotesBehavior }))}
               >
                 <option value="inline">{t('exports:notesInline')}</option>
                 <option value="separate">{t('exports:notesSeparate')}</option>
@@ -314,7 +426,7 @@ export function ExportCenterPage() {
               </Select>
 
               <div className="xl:col-span-2">
-                <Button className="w-full" variant="outline" onClick={() => void saveProfile()}>
+                <Button className="w-full" variant="outline" onClick={() => void saveProfile()} disabled={!libraryHydrated}>
                   {t('exports:saveProfile')}
                 </Button>
               </div>
@@ -326,37 +438,39 @@ export function ExportCenterPage() {
               <CardTitle>{t('exports:preview')}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="rounded-xl border border-border/80 bg-muted/35 p-3 font-mono text-sm text-foreground/70">{payload.filename}</div>
+              <div className="rounded-xl border border-border/80 bg-muted/35 p-3 font-mono text-sm text-foreground/70">
+                {payloadState.payload?.filename ?? t('exports:invalidSource')}
+              </div>
               <div className="rounded-2xl border border-border/80 bg-panel p-4">
                 <div className="section-label">{t('exports:exportFormat')}</div>
-                <div className="mt-2 text-sm text-foreground/65">
-                  {draftProfile.format.toUpperCase()} · {draftProfile.scope} · {draftProfile.language}
-                </div>
+                <div className="mt-2 text-sm text-foreground/65">{previewHeader}</div>
               </div>
-              <Textarea value={payload.content} readOnly className="min-h-[520px]" />
+              {payloadState.payload ? (
+                <Textarea value={payloadState.payload.content} readOnly className="min-h-[520px]" />
+              ) : (
+                <div className="rounded-2xl border border-dashed border-border bg-muted/20 p-6 text-sm text-foreground/65">
+                  {payloadState.error ?? t('exports:invalidSource')}
+                </div>
+              )}
             </CardContent>
           </Card>
         </>
       }
       right={
-        <>
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle>{t('exports:actions')}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="rounded-2xl border border-border/80 bg-muted/25 p-3 text-sm text-foreground/65">
-                {libraryHydrated ? t('exports:profileSaved') : t('common:loadingWorkspace')}
-              </div>
-              <Button className="w-full" onClick={() => void runExport()}>
-                {t('exports:exportNow')}
-              </Button>
-              <Button className="w-full" variant="outline" onClick={() => window.history.back()}>
-                {t('common:cancel')}
-              </Button>
-            </CardContent>
-          </Card>
-        </>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle>{t('exports:actions')}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="rounded-2xl border border-border/80 bg-muted/25 p-3 text-sm text-foreground/65">{statusMessage}</div>
+            <Button className="w-full" onClick={() => void runExport()} disabled={!libraryHydrated || !payloadState.payload}>
+              {t('exports:exportNow')}
+            </Button>
+            <Button className="w-full" variant="outline" onClick={() => window.history.back()}>
+              {t('common:cancel')}
+            </Button>
+          </CardContent>
+        </Card>
       }
     />
   );

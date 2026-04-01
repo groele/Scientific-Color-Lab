@@ -2,6 +2,23 @@ import { create } from 'zustand';
 import type { BackgroundMode, CopyFormat } from '@/domain/models';
 import { settingsRepository } from '@/db/repositories';
 
+let persistTimer: number | null = null;
+
+function schedulePreferenceSave(nextPartial: {
+  copyFormat?: CopyFormat;
+  backgroundMode?: BackgroundMode;
+  showWelcome?: boolean;
+  recentProjectId?: string;
+}) {
+  if (persistTimer) {
+    window.clearTimeout(persistTimer);
+  }
+
+  persistTimer = window.setTimeout(() => {
+    void settingsRepository.save(nextPartial);
+  }, 250);
+}
+
 interface PreferencesState {
   copyFormat: CopyFormat;
   backgroundMode: BackgroundMode;
@@ -32,19 +49,19 @@ export const usePreferencesStore = create<PreferencesState>((set) => ({
     });
   },
   setCopyFormat: async (copyFormat) => {
-    await settingsRepository.save({ copyFormat });
     set({ copyFormat });
+    schedulePreferenceSave({ copyFormat });
   },
   setBackgroundMode: async (backgroundMode) => {
-    await settingsRepository.save({ backgroundMode });
     set({ backgroundMode });
+    schedulePreferenceSave({ backgroundMode });
   },
   setShowWelcome: async (showWelcome) => {
-    await settingsRepository.save({ showWelcome });
     set({ showWelcome });
+    schedulePreferenceSave({ showWelcome });
   },
   setRecentProjectId: async (recentProjectId) => {
-    await settingsRepository.save({ recentProjectId });
     set({ recentProjectId });
+    schedulePreferenceSave({ recentProjectId });
   },
 }));

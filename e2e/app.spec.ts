@@ -60,3 +60,13 @@ test('legacy routes redirect into the workspace shell', async ({ page }) => {
   await page.goto('/generators');
   await expect(page).toHaveURL(/\/workspace\?view=chart-preview$/);
 });
+
+test('invalid route shows recovery UI and can return to workspace', async ({ page }) => {
+  await page.goto('/definitely-not-a-route');
+
+  await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible();
+  await page.getByRole('button', { name: 'Back to workspace' }).click();
+
+  await expect(page).toHaveURL(/\/workspace$/);
+  await expect(page.getByText('Palette Canvas')).toBeVisible();
+});

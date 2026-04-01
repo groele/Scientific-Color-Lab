@@ -5,7 +5,7 @@ import type { AnalyzerWorkerRequest, AnalyzerWorkerResponse } from '@/domain/mod
 
 self.onmessage = (event: MessageEvent<AnalyzerWorkerRequest>) => {
   const result = analyzePixels(event.data);
-  const payload: AnalyzerWorkerResponse = { result };
+  const payload: AnalyzerWorkerResponse = { requestId: event.data.requestId, result };
   self.postMessage(payload);
 };
 

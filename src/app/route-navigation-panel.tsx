@@ -4,7 +4,6 @@ import { NavLink } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LanguageSwitcher } from '@/components/ui/language-switcher';
-import { useLibraryStore } from '@/stores/library-store';
 
 interface RouteNavigationPanelProps {
   onInstall?: () => void;
@@ -14,8 +13,6 @@ interface RouteNavigationPanelProps {
 
 export function RouteNavigationPanel({ onInstall, canInstall = false, isInstalled = false }: RouteNavigationPanelProps) {
   const { t } = useTranslation(['common', 'workspace']);
-  const projects = useLibraryStore((state) => state.projects);
-  const latestProject = projects[0];
   const items = [
     { to: '/workspace', label: t('common:workspace'), icon: FlaskConical },
     { to: '/library', label: t('common:library'), icon: FolderArchive },
@@ -68,14 +65,7 @@ export function RouteNavigationPanel({ onInstall, canInstall = false, isInstalle
 
         <div className="rounded-2xl border border-border/80 bg-panel p-3">
           <div className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/45">{t('common:recent')}</div>
-          {latestProject ? (
-            <div className="mt-2 space-y-1">
-              <div className="font-medium text-foreground">{latestProject.name}</div>
-              <div className="line-clamp-2 text-sm text-foreground/65">{latestProject.description?.trim() || t('common:recentProjectHint')}</div>
-            </div>
-          ) : (
-            <div className="mt-2 text-sm text-foreground/60">{t('workspace:noRecent')}</div>
-          )}
+          <div className="mt-2 text-sm text-foreground/60">{t('common:recentProjectHint')}</div>
         </div>
       </CardContent>
     </Card>

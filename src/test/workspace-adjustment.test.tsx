@@ -138,6 +138,6 @@ describe('workspace palette-wide adjustment', () => {
 
     expect(screen.getByText(/Palette-wide adjustment/i)).toBeInTheDocument();
     expect(screen.getByText(new RegExp(selected.name))).toBeInTheDocument();
-    expect(screen.getByText(/ΔH/i)).toBeInTheDocument();
+    expect(screen.getByText(/dH/i)).toBeInTheDocument();
   });
 });

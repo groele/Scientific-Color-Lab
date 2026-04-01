@@ -4,13 +4,11 @@ import { ToastProvider } from '@/components/ui/toast-provider';
 import { AppRoutes } from '@/routes/app-routes';
 import { useDiagnosticsStore } from '@/stores/diagnostics-store';
 import { useI18nStore } from '@/stores/i18n-store';
-import { useLibraryStore } from '@/stores/library-store';
 import { usePreferencesStore } from '@/stores/preferences-store';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 
 export function App() {
   const { t } = useTranslation(['common']);
-  const hydrateLibrary = useLibraryStore((state) => state.hydrate);
   const hydrateDiagnostics = useDiagnosticsStore((state) => state.hydrate);
   const hydratePreferences = usePreferencesStore((state) => state.hydrate);
   const hydrateI18n = useI18nStore((state) => state.hydrate);
@@ -21,7 +19,7 @@ export function App() {
     let active = true;
 
     const bootstrap = async () => {
-      await Promise.allSettled([hydrateLibrary(), hydrateDiagnostics(), hydratePreferences(), hydrateI18n()]);
+      await Promise.allSettled([hydrateDiagnostics(), hydratePreferences(), hydrateI18n()]);
       if (!active) {
         return;
       }
@@ -35,7 +33,7 @@ export function App() {
     return () => {
       active = false;
     };
-  }, [hydrateDiagnostics, hydrateI18n, hydrateLibrary, hydratePreferences, setCopyFormat]);
+  }, [hydrateDiagnostics, hydrateI18n, hydratePreferences, setCopyFormat]);
 
   if (!bootstrapped) {
     return (

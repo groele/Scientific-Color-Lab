@@ -25,7 +25,7 @@ export function AdjustmentHistoryPanel() {
                 {t('workspace:anchorColor')}: {entry.anchorColorName}
               </div>
               <div className="mt-1 font-mono text-xs text-foreground/60">
-                ΔH {formatSigned(entry.delta.hue)} / ΔL {formatSigned(entry.delta.lightness)} / ΔC {formatSigned(entry.delta.chroma, 3)} / ΔA{' '}
+                dH {formatSigned(entry.delta.hue)} / dL {formatSigned(entry.delta.lightness)} / dC {formatSigned(entry.delta.chroma, 3)} / dA{' '}
                 {formatSigned(entry.delta.alpha)}
               </div>
               <div className="mt-1 font-mono text-xs text-foreground/55">

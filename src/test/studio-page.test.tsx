@@ -1,9 +1,13 @@
 import { render } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import '@/i18n';
 import { ToastProvider } from '@/components/ui/toast-provider';
 import { WorkspacePage } from '@/pages/workspace-page';
+
+vi.mock('@/hooks/use-library-hydration', () => ({
+  useLibraryHydration: () => true,
+}));
 
 describe('WorkspacePage', () => {
   it('renders the workspace shell', () => {

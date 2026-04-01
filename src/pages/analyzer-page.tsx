@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle, ClipboardPaste, Sparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { RouteNavigationPanel } from '@/app/route-navigation-panel';
+import { ColorSwatchButton } from '@/components/color/color-swatch-button';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SplitPanelLayout } from '@/components/ui/split-panel-layout';
-import { RouteNavigationPanel } from '@/app/route-navigation-panel';
-import { usePwaInstall } from '@/hooks/use-pwa-install';
 import {
   AnalyzerControlsCard,
   AnalyzerStatsSummary,
@@ -17,10 +17,11 @@ import {
   ReplacementSuggestionList,
 } from '@/components/viz/image-analysis';
 import { DiagnosticsPanel } from '@/components/workspace/diagnostics-panel';
-import { ColorSwatchButton } from '@/components/color/color-swatch-button';
 import { paletteFromColors } from '@/domain/color/palette';
 import { buildPaletteDiagnostics } from '@/domain/diagnostics/engine';
 import type { ColorToken, DiagnosticItem, ImageAnalysisResult, ImageCluster, Palette } from '@/domain/models';
+import { useLibraryHydration } from '@/hooks/use-library-hydration';
+import { usePwaInstall } from '@/hooks/use-pwa-install';
 import { useAnalyzerStore } from '@/stores/analyzer-store';
 import { useLibraryStore } from '@/stores/library-store';
 import { useWorkspaceStore } from '@/stores/workspace-store';
@@ -34,6 +35,7 @@ async function rasterizeSvgSample(blob: Blob) {
       node.onerror = () => reject(new Error('Unable to decode the SVG sample image.'));
       node.src = url;
     });
+
     const canvas = document.createElement('canvas');
     canvas.width = image.naturalWidth || 1200;
     canvas.height = image.naturalHeight || 900;
@@ -68,35 +70,31 @@ function deriveSuitabilitySummary(clusters: ImageCluster[]) {
   };
 }
 
-function clusterSummary(cluster: ImageCluster | null, isZh: boolean) {
+function clusterSummary(cluster: ImageCluster | null, t: (key: string, options?: Record<string, unknown>) => string) {
   if (!cluster) {
     return null;
   }
 
-  return isZh
-    ? `${cluster.color.hex} · 占比 ${Math.round(cluster.percentage * 100)}% · ${cluster.count} 个采样像素`
-    : `${cluster.color.hex} · ${Math.round(cluster.percentage * 100)}% share · ${cluster.count} sampled pixels`;
+  return t('analyzer:clusterSummary', {
+    hex: cluster.color.hex,
+    share: `${Math.round(cluster.percentage * 100)}%`,
+    count: cluster.count,
+  });
 }
 
-function clusterSuitability(cluster: ImageCluster | null, isZh: boolean) {
+function clusterSuitability(cluster: ImageCluster | null, t: (key: string, options?: Record<string, unknown>) => string) {
   if (!cluster?.assessment) {
-    return isZh ? '在正式用于论文或图表前，建议先做科研重构。' : 'Needs scientific reconstruction before publication use.';
+    return t('analyzer:clusterNeedsReconstruction');
   }
 
   const flags = [];
-  if (cluster.assessment.categorical) flags.push(isZh ? '分类色' : 'categorical use');
-  if (cluster.assessment.gradientEndpoint) flags.push(isZh ? '渐变端点' : 'gradient endpoints');
-  if (cluster.assessment.background) flags.push(isZh ? '背景色' : 'background use');
-  if (cluster.assessment.text) flags.push(isZh ? '文字色' : 'text use');
-  if (cluster.assessment.accent) flags.push(isZh ? '强调色' : 'accent use');
+  if (cluster.assessment.categorical) flags.push(t('analyzer:suitabilityLabels.categorical'));
+  if (cluster.assessment.gradientEndpoint) flags.push(t('analyzer:suitabilityLabels.endpoint'));
+  if (cluster.assessment.background) flags.push(t('analyzer:suitabilityLabels.background'));
+  if (cluster.assessment.text) flags.push(t('analyzer:suitabilityLabels.text'));
+  if (cluster.assessment.accent) flags.push(t('analyzer:suitabilityLabels.accent'));
 
-  return flags.length
-    ? isZh
-      ? `更适合作为：${flags.join('、')}`
-      : `Best suited for ${flags.join(', ')}.`
-    : isZh
-      ? '在正式用于论文或图表前，建议先做科研重构。'
-      : 'Needs scientific reconstruction before publication use.';
+  return flags.length ? t('analyzer:clusterSuitabilityPrefix', { labels: flags.join(', ') }) : t('analyzer:clusterNeedsReconstruction');
 }
 
 function createRawPalette(result: ImageAnalysisResult): Palette {
@@ -126,8 +124,7 @@ function deriveAnalyzerDiagnostics(result: ImageAnalysisResult, clusterLayer: 's
 }
 
 export function AnalyzerPage() {
-  const { t, i18n } = useTranslation(['analyzer']);
-  const isZh = i18n.language === 'zh-CN';
+  const { t } = useTranslation(['common', 'analyzer']);
   const navigate = useNavigate();
   const { canInstall, isInstalled, install } = usePwaInstall();
   const previewUrl = useAnalyzerStore((state) => state.previewUrl);
@@ -148,6 +145,9 @@ export function AnalyzerPage() {
   const clear = useAnalyzerStore((state) => state.clear);
   const setCurrentPalette = useWorkspaceStore((state) => state.setCurrentPalette);
   const remember = useLibraryStore((state) => state.remember);
+
+  useLibraryHydration();
+
   const [paletteMode, setPaletteMode] = useState<'raw' | 'scientific'>('scientific');
 
   const activeClusters = clusterLayer === 'detail' ? result?.detailClusters ?? [] : result?.mergedClusters ?? [];
@@ -158,19 +158,17 @@ export function AnalyzerPage() {
   const inspectorMetaLabel = selectedSuggestedColorId
     ? t('analyzer:suitability')
     : clusterLayer === 'detail'
-      ? (isZh ? 'Detail 层概览' : 'Detail layer summary')
+      ? t('analyzer:detailLayerSummary')
       : t('analyzer:analysisSummary');
   const inspectorMetaValue = selectedSuggestedColorId
-    ? selectedSuggestedColor?.usage.join(', ') || (isZh ? '已重构为更适合科研使用的颜色。' : 'Reconstructed for scientific use.')
-    : clusterSummary(selectedCluster, isZh) ?? undefined;
-  const inspectorSecondary = selectedSuggestedColorId ? selectedSuggestedColor?.notes : clusterSuitability(selectedCluster, isZh);
+    ? selectedSuggestedColor?.usage.join(', ') || t('analyzer:scientificReconstructionBody')
+    : clusterSummary(selectedCluster, t) ?? undefined;
+  const inspectorSecondary = selectedSuggestedColorId ? selectedSuggestedColor?.notes : clusterSuitability(selectedCluster, t);
   const suitabilitySummary = result ? deriveSuitabilitySummary(result.mergedClusters) : null;
   const rawPalette = useMemo(() => (result ? createRawPalette(result) : null), [result]);
   const activePalette = paletteMode === 'raw' && rawPalette ? rawPalette : result?.suggestedPalette ?? null;
   const analyzerDiagnostics = useMemo(() => (result ? deriveAnalyzerDiagnostics(result, clusterLayer) : null), [clusterLayer, result]);
-  const layerHeading = clusterLayer === 'detail'
-    ? (isZh ? '扩展颜色层' : 'Detail layer')
-    : (isZh ? '主色摘要层' : 'Summary layer');
+  const layerHeading = clusterLayer === 'detail' ? t('analyzer:detailLayer') : t('analyzer:summaryLayer');
 
   useEffect(() => {
     const handlePaste = (event: ClipboardEvent) => {
@@ -230,7 +228,9 @@ export function AnalyzerPage() {
                 <CardTitle>{t('analyzer:startWithImage')}</CardTitle>
               </CardHeader>
               <CardContent className="grid gap-3 md:grid-cols-2">
-                <div className="rounded-2xl border border-border/80 bg-muted/35 p-4 text-sm text-foreground/70">{t('analyzer:startWithImageBody')}</div>
+                <div className="rounded-2xl border border-border/80 bg-muted/35 p-4 text-sm text-foreground/70">
+                  {t('analyzer:startWithImageBody')}
+                </div>
                 <div className="rounded-2xl border border-border/80 bg-muted/35 p-4 text-sm text-foreground/70">
                   <ClipboardPaste className="mr-2 inline h-4 w-4" />
                   {t('analyzer:browserPasteHint')}
@@ -276,10 +276,18 @@ export function AnalyzerPage() {
                     <CardTitle>{t('analyzer:analysisSummary')}</CardTitle>
                   </CardHeader>
                   <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    <div className="rounded-2xl border border-border/80 bg-muted/35 p-3 text-sm">{t('analyzer:categoricalSafe')}: {suitabilitySummary.categorical}</div>
-                    <div className="rounded-2xl border border-border/80 bg-muted/35 p-3 text-sm">{t('analyzer:textSafe')}: {suitabilitySummary.text}</div>
-                    <div className="rounded-2xl border border-border/80 bg-muted/35 p-3 text-sm">{t('analyzer:backgroundSafe')}: {suitabilitySummary.background}</div>
-                    <div className="rounded-2xl border border-border/80 bg-muted/35 p-3 text-sm">{t('analyzer:accentSafe')}: {suitabilitySummary.accent}</div>
+                    <div className="rounded-2xl border border-border/80 bg-muted/35 p-3 text-sm">
+                      {t('analyzer:categoricalSafe')}: {suitabilitySummary.categorical}
+                    </div>
+                    <div className="rounded-2xl border border-border/80 bg-muted/35 p-3 text-sm">
+                      {t('analyzer:textSafe')}: {suitabilitySummary.text}
+                    </div>
+                    <div className="rounded-2xl border border-border/80 bg-muted/35 p-3 text-sm">
+                      {t('analyzer:backgroundSafe')}: {suitabilitySummary.background}
+                    </div>
+                    <div className="rounded-2xl border border-border/80 bg-muted/35 p-3 text-sm">
+                      {t('analyzer:accentSafe')}: {suitabilitySummary.accent}
+                    </div>
                   </CardContent>
                 </Card>
               ) : null}
@@ -375,6 +383,26 @@ export function AnalyzerPage() {
                   }}
                 >
                   {t('analyzer:adopt')}
+                </Button>
+                <Button
+                  className="w-full"
+                  variant="outline"
+                  onClick={() => {
+                    if (!result) {
+                      return;
+                    }
+
+                    navigate('/exports', {
+                      state: {
+                        scope: 'palette',
+                        paletteId: result.suggestedPalette.id,
+                        paletteName: result.suggestedPalette.name,
+                        from: 'analyzer',
+                      },
+                    });
+                  }}
+                >
+                  {t('common:exports')}
                 </Button>
                 <Button className="w-full" variant="outline" onClick={() => clear()}>
                   {t('analyzer:startOver')}

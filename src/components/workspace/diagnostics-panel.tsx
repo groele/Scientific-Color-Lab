@@ -47,6 +47,11 @@ export function DiagnosticsPanel({ diagnostics, onQuickFix }: DiagnosticsPanelPr
   const Icon = statusIcon(diagnostics.status);
   const topItems = useMemo(() => diagnostics.items.slice(0, 2), [diagnostics.items]);
 
+  const diagnosticText = (item: PaletteDiagnostics['items'][number], field: 'title' | 'message' | 'suggestion') => {
+    const fallback = field === 'title' ? item.title : field === 'message' ? item.message : item.suggestion ?? '';
+    return t(`diagnostics:item.${item.code}.${field}`, { defaultValue: fallback });
+  };
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -96,8 +101,8 @@ export function DiagnosticsPanel({ diagnostics, onQuickFix }: DiagnosticsPanelPr
             <div className="section-label">{t('diagnostics:topFindings')}</div>
             {topItems.map((item) => (
               <div key={item.id} className="rounded-2xl border border-border/80 bg-panel px-3 py-3">
-                <div className="font-medium text-foreground">{item.title}</div>
-                <p className="mt-1 text-sm text-foreground/68">{item.message}</p>
+                <div className="font-medium text-foreground">{diagnosticText(item, 'title')}</div>
+                <p className="mt-1 text-sm text-foreground/68">{diagnosticText(item, 'message')}</p>
               </div>
             ))}
           </div>
@@ -139,9 +144,9 @@ export function DiagnosticsPanel({ diagnostics, onQuickFix }: DiagnosticsPanelPr
                 <div className="flex items-start gap-3">
                   <AlertTriangle className="mt-0.5 h-4 w-4 text-danger" />
                   <div>
-                    <div className="font-medium text-foreground">{item.title}</div>
-                    <p className="mt-1 text-sm text-foreground/70">{item.message}</p>
-                    {item.suggestion ? <p className="mt-1 text-xs text-foreground/55">{item.suggestion}</p> : null}
+                    <div className="font-medium text-foreground">{diagnosticText(item, 'title')}</div>
+                    <p className="mt-1 text-sm text-foreground/70">{diagnosticText(item, 'message')}</p>
+                    {item.suggestion ? <p className="mt-1 text-xs text-foreground/55">{diagnosticText(item, 'suggestion')}</p> : null}
                   </div>
                 </div>
               </div>

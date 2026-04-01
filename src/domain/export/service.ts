@@ -1,3 +1,4 @@
+import { createId, readableRgbString } from '@/domain/color/convert';
 import type {
   ColorToken,
   ExportFormat,
@@ -8,7 +9,6 @@ import type {
   Project,
   SavedExport,
 } from '@/domain/models';
-import { createId, readableRgbString } from '@/domain/color/convert';
 import { slugify } from '@/lib/utils';
 
 interface ExportInput {
@@ -32,7 +32,6 @@ type SummaryLabelKey =
   | 'description'
   | 'usage'
   | 'tags'
-  | 'notes'
   | 'notesSection'
   | 'notSpecified'
   | 'none'
@@ -47,7 +46,6 @@ const SUMMARY_LABELS: Record<LanguageCode, Record<SummaryLabelKey, string>> = {
     description: 'Description',
     usage: 'Usage',
     tags: 'Tags',
-    notes: 'Notes',
     notesSection: 'NOTES',
     notSpecified: 'not specified',
     none: 'none',
@@ -61,7 +59,6 @@ const SUMMARY_LABELS: Record<LanguageCode, Record<SummaryLabelKey, string>> = {
     description: '说明',
     usage: '用途',
     tags: '标签',
-    notes: '备注',
     notesSection: '备注',
     notSpecified: '未填写',
     none: '无',
@@ -139,7 +136,7 @@ function paletteRows(palette: Palette, profile: ExportProfile) {
       profile.includeTags ? color.tags.join('|') : '',
       profile.includeTags ? color.usage.join('|') : '',
       profile.notesBehavior !== 'omit' ? JSON.stringify(color.notes) : '',
-    ].join(','),
+    ].join(', '),
   );
 }
 
@@ -181,14 +178,14 @@ function exportCsv(scope: ExportScope, profile: ExportProfile, palette?: Palette
         profile.includeTags ? color.tags.join('|') : '',
         profile.includeTags ? color.usage.join('|') : '',
         profile.notesBehavior !== 'omit' ? JSON.stringify(color.notes) : '',
-      ].join(','),
+      ].join(', '),
     ].join('\n');
   }
 
   if (scope === 'project' && project) {
     const header = 'projectId,projectName,description,paletteName,paletteClass,colorCount';
     const rows = projectPalettes.map((entry) =>
-      [project.id, project.name, JSON.stringify(project.description ?? ''), entry.name, entry.class, entry.colors.length].join(','),
+      [project.id, project.name, JSON.stringify(project.description ?? ''), entry.name, entry.class, entry.colors.length].join(', '),
     );
     return [header, ...rows].join('\n');
   }
@@ -205,11 +202,7 @@ function exportCssVariables(palette?: Palette) {
     return ':root {}';
   }
 
-  return [
-    ':root {',
-    ...palette.colors.map((color, index) => `  --${slugify(palette.name)}-${index + 1}: ${color.hex};`),
-    '}',
-  ].join('\n');
+  return [':root {', ...palette.colors.map((color, index) => `  --${slugify(palette.name)}-${index + 1}: ${color.hex};`), '}'].join('\n');
 }
 
 function exportTailwindTokens(palette?: Palette) {
@@ -235,11 +228,7 @@ function exportMatplotlib(palette?: Palette) {
     return 'scientific_color_lab = []';
   }
 
-  return [
-    'scientific_color_lab = [',
-    ...palette.colors.map((color) => `    {"name": "${color.name}", "hex": "${color.hex}"},`),
-    ']',
-  ].join('\n');
+  return ['scientific_color_lab = [', ...palette.colors.map((color) => `    {"name": "${color.name}", "hex": "${color.hex}"},`), ']'].join('\n');
 }
 
 function exportPlotly(palette?: Palette) {
@@ -249,12 +238,8 @@ function exportPlotly(palette?: Palette) {
 
   return JSON.stringify(
     {
-      layout: {
-        colorway: palette.colors.map((color) => color.hex),
-      },
-      data: {
-        scatter: [{ marker: { line: { width: 1.2 } } }],
-      },
+      layout: { colorway: palette.colors.map((color) => color.hex) },
+      data: { scatter: [{ marker: { line: { width: 1.2 } } }] },
     },
     null,
     2,
@@ -272,15 +257,7 @@ function exportMatlab(palette?: Palette) {
   return ['scientific_color_lab = [', ...rows, '];'].join('\n');
 }
 
-function exportSummary(
-  language: LanguageCode,
-  scope: ExportScope,
-  profile: ExportProfile,
-  palette?: Palette,
-  color?: ColorToken,
-  project?: Project,
-  projectPalettes: Palette[] = [],
-) {
+function exportSummary(language: LanguageCode, scope: ExportScope, profile: ExportProfile, palette?: Palette, color?: ColorToken, project?: Project, projectPalettes: Palette[] = []) {
   if (scope === 'color' && color) {
     return [
       summaryLine(language, 'color', color.name),
@@ -325,15 +302,7 @@ function exportSummary(
     .join('\n');
 }
 
-function serializeExport(
-  format: ExportFormat,
-  scope: ExportScope,
-  profile: ExportProfile,
-  palette?: Palette,
-  color?: ColorToken,
-  project?: Project,
-  projectPalettes: Palette[] = [],
-) {
+function serializeExport(format: ExportFormat, scope: ExportScope, profile: ExportProfile, palette?: Palette, color?: ColorToken, project?: Project, projectPalettes: Palette[] = []) {
   switch (format) {
     case 'json':
       return exportJson(scope, profile, palette, color, project, projectPalettes);

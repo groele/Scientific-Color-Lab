@@ -23,6 +23,8 @@ import {
 import { createId, scientificColorFromString } from '@/domain/color/convert';
 import { paletteFromColors } from '@/domain/color/palette';
 
+let hydrationPromise: Promise<void> | null = null;
+
 function defaultProject(): Project {
   const now = new Date().toISOString();
   return {
@@ -166,30 +168,42 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   search: '',
   hydrated: false,
   hydrate: async () => {
-    let projects = await projectRepository.list();
-    if (!projects.length) {
-      const seeded = defaultProject();
-      await projectRepository.save(seeded);
-      projects = [seeded];
+    if (get().hydrated) {
+      return;
     }
 
-    let exportProfiles = await exportProfileRepository.list();
-    if (!exportProfiles.length) {
-      const seeded = defaultExportProfiles();
-      await Promise.all(seeded.map((profile) => exportProfileRepository.save(profile)));
-      exportProfiles = seeded;
+    if (!hydrationPromise) {
+      hydrationPromise = (async () => {
+        let projects = await projectRepository.list();
+        if (!projects.length) {
+          const seeded = defaultProject();
+          await projectRepository.save(seeded);
+          projects = [seeded];
+        }
+
+        let exportProfiles = await exportProfileRepository.list();
+        if (!exportProfiles.length) {
+          const seeded = defaultExportProfiles();
+          await Promise.all(seeded.map((profile) => exportProfileRepository.save(profile)));
+          exportProfiles = seeded;
+        }
+
+        const [palettes, favorites, recents, savedExports, assets, tags] = await Promise.all([
+          paletteRepository.list(),
+          favoriteRepository.list(),
+          recentRepository.list(),
+          exportRepository.list(),
+          assetRepository.list(),
+          tagRepository.list(),
+        ]);
+
+        set({ projects, palettes, favorites, recents, savedExports, exportProfiles, assets, tags, hydrated: true });
+      })().finally(() => {
+        hydrationPromise = null;
+      });
     }
 
-    const [palettes, favorites, recents, savedExports, assets, tags] = await Promise.all([
-      paletteRepository.list(),
-      favoriteRepository.list(),
-      recentRepository.list(),
-      exportRepository.list(),
-      assetRepository.list(),
-      tagRepository.list(),
-    ]);
-
-    set({ projects, palettes, favorites, recents, savedExports, exportProfiles, assets, tags, hydrated: true });
+    await hydrationPromise;
   },
   setSearch: (search) => set({ search }),
   savePalette: async (palette, projectId) => {

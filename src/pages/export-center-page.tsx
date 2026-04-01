@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLocation } from 'react-router-dom';
 import { RouteNavigationPanel } from '@/app/route-navigation-panel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,6 +13,7 @@ import { createId } from '@/domain/color/convert';
 import { buildExportPayload, createExportRecord } from '@/domain/export/service';
 import type { ExportFormat, ExportProfile, ExportScope, LanguageCode, NotesBehavior } from '@/domain/models';
 import { downloadText } from '@/lib/utils';
+import { useLibraryHydration } from '@/hooks/use-library-hydration';
 import { usePwaInstall } from '@/hooks/use-pwa-install';
 import { useLibraryStore } from '@/stores/library-store';
 import { useWorkspaceStore } from '@/stores/workspace-store';
@@ -38,7 +40,9 @@ function createDraftProfile(name: string, base?: ExportProfile): ExportProfile {
 export function ExportCenterPage() {
   const { t } = useTranslation(['common', 'exports']);
   const { pushToast } = useToast();
+  const location = useLocation();
   const { canInstall, isInstalled, install } = usePwaInstall();
+  const libraryHydrated = useLibraryHydration();
   const currentPalette = useWorkspaceStore((state) => state.currentPalette);
   const selectedColor = useWorkspaceStore((state) => state.getSelectedColor());
   const palettes = useLibraryStore((state) => state.palettes);
@@ -71,6 +75,26 @@ export function ExportCenterPage() {
       setProjectId(projects[0].id);
     }
   }, [projectId, projects]);
+
+  useEffect(() => {
+    const routeState = location.state as { scope?: ExportScope; paletteId?: string; projectId?: string } | null;
+    if (!routeState) {
+      return;
+    }
+
+    if (routeState.scope) {
+      const scope = routeState.scope;
+      setDraftProfile((current) => ({ ...current, scope }));
+    }
+
+    if (routeState.paletteId) {
+      setPaletteId(routeState.paletteId);
+    }
+
+    if (routeState.projectId) {
+      setProjectId(routeState.projectId);
+    }
+  }, [location.state]);
 
   const paletteOptions = useMemo(
     () => [currentPalette, ...palettes.filter((palette) => palette.id !== currentPalette.id)],
@@ -192,6 +216,45 @@ export function ExportCenterPage() {
         <>
           <Card>
             <CardHeader className="pb-3">
+              <CardTitle>{t('exports:sourceSelection')}</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.75fr)]">
+              <div className="rounded-2xl border border-border/80 bg-muted/25 p-4">
+                <div className="section-label">{t('exports:currentPalette')}</div>
+                <div className="mt-2 font-medium text-foreground">{selectedPalette.name}</div>
+                <div className="mt-3 grid gap-2 md:grid-cols-3">
+                  {selectedPalette.colors.slice(0, 6).map((color) => (
+                    <div key={color.id} className="rounded-xl border border-border/80 bg-panel px-3 py-3 text-sm">
+                      <div className="font-medium text-foreground">{color.name}</div>
+                      <div className="mt-1 font-mono text-xs uppercase tracking-[0.16em] text-foreground/55">{color.hex}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-border/80 bg-muted/25 p-4 text-sm text-foreground/70">
+                <div className="section-label">{t('exports:exportTargets')}</div>
+                <div className="mt-3 space-y-2">
+                  <div>
+                    {t('exports:currentColor')}: {selectedColor.name}
+                  </div>
+                  <div>
+                    {t('exports:currentPalette')}: {selectedPalette.name}
+                  </div>
+                  <div>
+                    {t('exports:currentProject')}: {selectedProject?.name ?? t('common:none')}
+                  </div>
+                  {draftProfile.scope === 'project' ? (
+                    <div>
+                      {t('exports:projectPalettes')}: {projectPalettes.length}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
               <CardTitle>{t('exports:profileConfiguration')}</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 xl:grid-cols-2">
@@ -264,7 +327,13 @@ export function ExportCenterPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="rounded-xl border border-border/80 bg-muted/35 p-3 font-mono text-sm text-foreground/70">{payload.filename}</div>
-              <Textarea value={payload.content} readOnly className="min-h-[560px]" />
+              <div className="rounded-2xl border border-border/80 bg-panel p-4">
+                <div className="section-label">{t('exports:exportFormat')}</div>
+                <div className="mt-2 text-sm text-foreground/65">
+                  {draftProfile.format.toUpperCase()} · {draftProfile.scope} · {draftProfile.language}
+                </div>
+              </div>
+              <Textarea value={payload.content} readOnly className="min-h-[520px]" />
             </CardContent>
           </Card>
         </>
@@ -273,33 +342,17 @@ export function ExportCenterPage() {
         <>
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle>{t('exports:exportTargets')}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm text-foreground/70">
-              <div>
-                {t('exports:currentColor')}: {selectedColor.name}
-              </div>
-              <div>
-                {t('exports:currentPalette')}: {selectedPalette.name}
-              </div>
-              <div>
-                {t('exports:currentProject')}: {selectedProject?.name ?? t('common:none')}
-              </div>
-              {draftProfile.scope === 'project' ? (
-                <div>
-                  {t('exports:projectPalettes')}: {projectPalettes.length}
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
               <CardTitle>{t('exports:actions')}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              <div className="rounded-2xl border border-border/80 bg-muted/25 p-3 text-sm text-foreground/65">
+                {libraryHydrated ? t('exports:profileSaved') : t('common:loadingWorkspace')}
+              </div>
               <Button className="w-full" onClick={() => void runExport()}>
                 {t('exports:exportNow')}
+              </Button>
+              <Button className="w-full" variant="outline" onClick={() => window.history.back()}>
+                {t('common:cancel')}
               </Button>
             </CardContent>
           </Card>

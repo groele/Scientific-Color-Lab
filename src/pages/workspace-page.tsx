@@ -22,6 +22,7 @@ import { InspectorPanel } from '@/components/workspace/inspector-panel';
 import { WelcomeOverlay } from '@/components/workspace/welcome-overlay';
 import { AccessibilityPanel } from '@/components/workspace/accessibility-panel';
 import { ColorSwatchButton } from '@/components/color/color-swatch-button';
+import { useLibraryHydration } from '@/hooks/use-library-hydration';
 import { usePaletteDerivations } from '@/hooks/use-palette-derivations';
 import { usePwaInstall } from '@/hooks/use-pwa-install';
 import { scientificColorFromString } from '@/domain/color/convert';
@@ -102,6 +103,7 @@ export function WorkspacePage() {
   const setShowWelcome = usePreferencesStore((state) => state.setShowWelcome);
   const markTemplateRecent = useTemplateStore((state) => state.markRecent);
   const { toneRamp, matrix, gradients, diagnostics, pairingGroups } = usePaletteDerivations();
+  const libraryHydrated = useLibraryHydration();
 
   const [baseHex, setBaseHex] = useState(selectedColor.hex);
   const [paletteClass, setPaletteClass] = useState<PaletteClass>(currentPalette.class);
@@ -270,7 +272,15 @@ export function WorkspacePage() {
                     <Button variant="outline" onClick={() => setActiveView('templates')}>
                       {t('workspace:browseTemplates')}
                     </Button>
-                    <Button onClick={handleSavePalette}>{t('workspace:savePalette')}</Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => navigate('/exports', { state: { scope: 'palette', paletteId: currentPalette.id, from: 'workspace' } })}
+                    >
+                      {t('common:exports')}
+                    </Button>
+                    <Button onClick={handleSavePalette} disabled={!libraryHydrated || !projectId}>
+                      {t('workspace:savePalette')}
+                    </Button>
                   </div>
                 </div>
               </CardHeader>

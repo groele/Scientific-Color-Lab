@@ -22,14 +22,9 @@ function createMockStore<T extends object>(state: T) {
 }
 
 const boot = vi.hoisted(() => {
-  const library = createDeferred();
   const diagnostics = createDeferred();
   const preferences = createDeferred();
   const i18n = createDeferred();
-
-  const libraryState = {
-    hydrate: vi.fn(() => library.promise),
-  };
 
   const diagnosticsState = {
     hydrate: vi.fn(() => diagnostics.promise),
@@ -49,11 +44,9 @@ const boot = vi.hoisted(() => {
   };
 
   return {
-    library,
     diagnostics,
     preferences,
     i18n,
-    libraryState,
     diagnosticsState,
     preferencesState,
     i18nState,
@@ -63,10 +56,6 @@ const boot = vi.hoisted(() => {
 
 vi.mock('@/routes/app-routes', () => ({
   AppRoutes: () => <div data-testid="app-routes">Routes ready</div>,
-}));
-
-vi.mock('@/stores/library-store', () => ({
-  useLibraryStore: createMockStore(boot.libraryState),
 }));
 
 vi.mock('@/stores/diagnostics-store', () => ({
@@ -93,7 +82,6 @@ describe('App boot hydration', () => {
     expect(screen.queryByTestId('app-routes')).not.toBeInTheDocument();
 
     boot.preferencesState.copyFormat = 'oklch';
-    boot.library.resolve();
     boot.diagnostics.resolve();
     boot.preferences.resolve();
     boot.i18n.resolve();

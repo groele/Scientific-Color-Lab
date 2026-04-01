@@ -1,0 +1,16 @@
+{
+  "name": "scientific-color-lab-overview",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Project overview deck for Scientific Color Lab",
+  "scripts": {
+    "build": "node scientific-color-lab-overview.js"
+  },
+  "dependencies": {
+    "fontkit": "^2.0.4",
+    "linebreak": "^1.1.0",
+    "pptxgenjs": "^3.12.0",
+    "prismjs": "^1.30.0",
+    "skia-canvas": "^3.0.8"
+  }
+}

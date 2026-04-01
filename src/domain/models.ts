@@ -429,11 +429,21 @@ export interface AdjustmentState {
   locks: Record<AdjustmentDimension, boolean>;
 }
 
+export interface AdjustmentDelta {
+  hue: number;
+  lightness: number;
+  chroma: number;
+  alpha: number;
+}
+
 export interface AdjustmentHistoryEntry {
   id: string;
-  colorId: string;
+  scope: 'palette';
+  anchorColorId: string;
+  anchorColorName: string;
   before: NumericOklch & { alpha: number };
   after: NumericOklch & { alpha: number };
+  delta: AdjustmentDelta;
   createdAt: string;
 }
 

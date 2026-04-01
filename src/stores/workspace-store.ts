@@ -1,6 +1,12 @@
 import { create } from 'zustand';
 import { generatePaletteFromBase, paletteFromColors } from '@/domain/color/palette';
-import { createAdjustmentHistoryEntry, createAdjustmentState, applyAdjustmentState } from '@/domain/color/adjustment';
+import {
+  applyAdjustmentDelta,
+  createAdjustmentDelta,
+  createAdjustmentHistoryEntry,
+  createAdjustmentState,
+  isZeroAdjustmentDelta,
+} from '@/domain/color/adjustment';
 import { evaluatePalette } from '@/domain/diagnostics/engine';
 import { scientificColorFromString } from '@/domain/color/convert';
 import { templateCatalog } from '@/data/templates/catalog';
@@ -259,16 +265,34 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         return {};
       }
 
-      const updatedColor = applyAdjustmentState(selectedColor, adjustment);
-      const nextPalette = replaceColorInPalette(state.currentPalette, selectedColor.id, () => updatedColor);
+      const delta = createAdjustmentDelta(selectedColor, adjustment);
+      if (isZeroAdjustmentDelta(delta)) {
+        return {
+          adjustment: {
+            ...createAdjustmentState(selectedColor),
+            locks: adjustment.locks,
+          },
+        };
+      }
+
+      const nextPalette = normalizePalette({
+        ...state.currentPalette,
+        colors: state.currentPalette.colors.map((color) => applyAdjustmentDelta(color, delta)),
+      });
+      const updatedAnchor =
+        nextPalette.colors.find((color) => color.id === selectedColor.id) ?? nextPalette.colors[0]!;
+
       useHistoryStore.getState().record(
         state.currentPalette,
         nextPalette,
-        createAdjustmentHistoryEntry(selectedColor.id, selectedColor, updatedColor),
+        createAdjustmentHistoryEntry(selectedColor, selectedColor, updatedAnchor, delta),
       );
       return {
         currentPalette: nextPalette,
-        adjustment,
+        adjustment: {
+          ...createAdjustmentState(updatedAnchor),
+          locks: adjustment.locks,
+        },
         previousColor: selectedColor,
       };
     }),

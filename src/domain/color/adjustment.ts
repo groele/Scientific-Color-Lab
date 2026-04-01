@@ -1,4 +1,4 @@
-import type { AdjustmentHistoryEntry, AdjustmentState, ColorToken } from '@/domain/models';
+import type { AdjustmentDelta, AdjustmentHistoryEntry, AdjustmentState, ColorToken } from '@/domain/models';
 import { createId, normalizeHue, scientificColorFromOklch } from '@/domain/color/convert';
 
 function clamp(value: number, minimum: number, maximum: number) {
@@ -20,13 +20,43 @@ export function createAdjustmentState(color: ColorToken): AdjustmentState {
   };
 }
 
-export function applyAdjustmentState(color: ColorToken, state: AdjustmentState) {
+export function shortestHueDelta(from: number, to: number) {
+  let delta = normalizeHue(to) - normalizeHue(from);
+
+  if (delta > 180) {
+    delta -= 360;
+  } else if (delta < -180) {
+    delta += 360;
+  }
+
+  return delta;
+}
+
+export function createAdjustmentDelta(color: ColorToken, state: AdjustmentState): AdjustmentDelta {
+  return {
+    hue: state.locks.hue ? 0 : shortestHueDelta(color.oklch.h, state.hue),
+    lightness: state.locks.lightness ? 0 : state.lightness - color.oklch.l,
+    chroma: state.locks.chroma ? 0 : state.chroma - color.oklch.c,
+    alpha: state.locks.alpha ? 0 : state.alpha - color.alpha,
+  };
+}
+
+export function isZeroAdjustmentDelta(delta: AdjustmentDelta, epsilon = 0.0001) {
+  return (
+    Math.abs(delta.hue) < epsilon &&
+    Math.abs(delta.lightness) < epsilon &&
+    Math.abs(delta.chroma) < epsilon &&
+    Math.abs(delta.alpha) < epsilon
+  );
+}
+
+export function applyAdjustmentDelta(color: ColorToken, delta: AdjustmentDelta) {
   const next = scientificColorFromOklch(
     {
-      h: normalizeHue(state.locks.hue ? color.oklch.h : state.hue),
-      l: clamp(state.locks.lightness ? color.oklch.l : state.lightness, 0.04, 0.98),
-      c: clamp(state.locks.chroma ? color.oklch.c : state.chroma, 0, 0.28),
-      alpha: clamp(state.locks.alpha ? color.alpha : state.alpha, 0, 1),
+      h: normalizeHue(color.oklch.h + delta.hue),
+      l: clamp(color.oklch.l + delta.lightness, 0.04, 0.98),
+      c: clamp(color.oklch.c + delta.chroma, 0, 0.28),
+      alpha: clamp(color.alpha + delta.alpha, 0, 1),
     },
     {
       id: color.id,
@@ -48,6 +78,10 @@ export function applyAdjustmentState(color: ColorToken, state: AdjustmentState) 
   };
 }
 
+export function applyAdjustmentState(color: ColorToken, state: AdjustmentState) {
+  return applyAdjustmentDelta(color, createAdjustmentDelta(color, state));
+}
+
 export function nudgeAdjustment(state: AdjustmentState, key: keyof Omit<AdjustmentState, 'locks'>, delta: number): AdjustmentState {
   if (key === 'hue') {
     return { ...state, hue: normalizeHue(state.hue + delta) };
@@ -64,13 +98,16 @@ export function nudgeAdjustment(state: AdjustmentState, key: keyof Omit<Adjustme
 }
 
 export function createAdjustmentHistoryEntry(
-  colorId: string,
+  anchorColor: ColorToken,
   before: ColorToken,
   after: ColorToken,
+  delta: AdjustmentDelta,
 ): AdjustmentHistoryEntry {
   return {
     id: createId('history'),
-    colorId,
+    scope: 'palette',
+    anchorColorId: anchorColor.id,
+    anchorColorName: anchorColor.name,
     before: {
       l: before.oklch.l,
       c: before.oklch.c,
@@ -83,6 +120,7 @@ export function createAdjustmentHistoryEntry(
       h: after.oklch.h,
       alpha: after.alpha,
     },
+    delta,
     createdAt: new Date().toISOString(),
   };
 }

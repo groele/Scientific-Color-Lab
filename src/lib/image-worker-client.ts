@@ -1,6 +1,11 @@
-import type { AnalyzerWorkerRequest, AnalyzerWorkerResponse, ImageAnalysisResult } from '@/domain/models';
+import type { AnalyzerOptions, AnalyzerWorkerRequest, AnalyzerWorkerResponse, ImageAnalysisResult } from '@/domain/models';
 
 let worker: Worker | null = null;
+const maxDimensionByMode: Record<AnalyzerOptions['detailLevel'], number> = {
+  compact: 280,
+  balanced: 420,
+  complete: 560,
+};
 
 function getWorker() {
   if (!worker) {
@@ -14,8 +19,9 @@ function drawToCanvas(
   drawable: CanvasImageSource,
   sourceWidth: number,
   sourceHeight: number,
+  options: AnalyzerOptions,
 ) {
-  const maxDimension = 240;
+  const maxDimension = maxDimensionByMode[options.detailLevel];
   const scale = Math.min(1, maxDimension / Math.max(sourceWidth, sourceHeight));
   const width = Math.max(1, Math.round(sourceWidth * scale));
   const height = Math.max(1, Math.round(sourceHeight * scale));
@@ -30,17 +36,17 @@ function drawToCanvas(
 
   context.drawImage(drawable, 0, 0, width, height);
   const imageData = context.getImageData(0, 0, width, height);
-  return { width, height, pixels: imageData.data.buffer };
+  return { sourceWidth, sourceHeight, width, height, pixels: imageData.data.buffer };
 }
 
-async function loadWithImageBitmap(file: Blob) {
+async function loadWithImageBitmap(file: Blob, options: AnalyzerOptions) {
   const bitmap = await createImageBitmap(file);
-  const result = drawToCanvas(bitmap, bitmap.width, bitmap.height);
+  const result = drawToCanvas(bitmap, bitmap.width, bitmap.height, options);
   bitmap.close();
   return result;
 }
 
-async function loadWithHtmlImage(file: Blob) {
+async function loadWithHtmlImage(file: Blob, options: AnalyzerOptions) {
   const url = URL.createObjectURL(file);
 
   try {
@@ -51,7 +57,7 @@ async function loadWithHtmlImage(file: Blob) {
       element.src = url;
     });
 
-    return drawToCanvas(image, image.naturalWidth, image.naturalHeight);
+    return drawToCanvas(image, image.naturalWidth, image.naturalHeight, options);
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -79,10 +85,10 @@ export function analyzePixelsWithWorker(payload: AnalyzerWorkerRequest) {
   });
 }
 
-export async function loadImagePixels(file: Blob) {
+export async function loadImagePixels(file: Blob, options: AnalyzerOptions) {
   try {
-    return await loadWithImageBitmap(file);
+    return await loadWithImageBitmap(file, options);
   } catch {
-    return loadWithHtmlImage(file);
+    return loadWithHtmlImage(file, options);
   }
 }

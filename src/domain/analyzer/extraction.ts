@@ -1,5 +1,6 @@
 import { converter, differenceCiede2000, wcagContrast } from 'culori';
 import type {
+  AnalyzerDetailLevel,
   AnalyzerWorkerRequest,
   DiagnosticItem,
   ImageAnalysisResult,
@@ -18,31 +19,138 @@ interface LabPoint {
   count: number;
 }
 
+interface WeightedClusterPoint extends LabPoint {
+  sourceCount: number;
+  preserveLongTail: boolean;
+}
+
+interface EvaluatedCluster {
+  point: WeightedClusterPoint;
+  cluster: ImageCluster;
+  preserveLongTail: boolean;
+}
+
 const toOklab = converter('oklab');
 const toOklch = converter('oklch');
 const deltaE = differenceCiede2000();
 const editorialBackground = '#f6f5f1';
 const darkBackground = '#131619';
+const alphaThreshold = 32;
+const lBins = 48;
+const aBins = 40;
+const bBins = 40;
+const abWindow = 0.45;
+const detailRetentionThreshold = 0.0025;
+const summaryRetentionThreshold = 0.015;
+const iterations = 16;
+const modeDefaultClusters: Record<AnalyzerDetailLevel, number> = {
+  compact: 8,
+  balanced: 12,
+  complete: 20,
+};
 
-function pickInitialCentroids(points: LabPoint[], k: number) {
-  const centroids: LabPoint[] = [];
-  if (!points.length) {
+function clamp(value: number, minimum: number, maximum: number) {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function round(value: number, digits = 4) {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+function quantizeRangeIndex(value: number, minimum: number, maximum: number, bins: number) {
+  const bounded = clamp(value, minimum, maximum);
+  const ratio = (bounded - minimum) / (maximum - minimum);
+  return Math.min(bins - 1, Math.max(0, Math.floor(ratio * bins)));
+}
+
+function quantizePoints(pixels: Uint8ClampedArray) {
+  const histogram = new Map<string, { l: number; a: number; b: number; count: number }>();
+  const processedPixels = pixels.length / 4;
+  let opaquePixels = 0;
+
+  for (let pixelIndex = 0; pixelIndex < pixels.length; pixelIndex += 4) {
+    const alpha = pixels[pixelIndex + 3] ?? 0;
+    if (alpha < alphaThreshold) {
+      continue;
+    }
+
+    const color = toOklab({
+      mode: 'rgb',
+      r: (pixels[pixelIndex] ?? 0) / 255,
+      g: (pixels[pixelIndex + 1] ?? 0) / 255,
+      b: (pixels[pixelIndex + 2] ?? 0) / 255,
+      alpha: alpha / 255,
+    });
+
+    if (!color) {
+      continue;
+    }
+
+    opaquePixels += 1;
+
+    const lIndex = Math.min(lBins - 1, Math.max(0, Math.floor(clamp(color.l ?? 0, 0, 1) * lBins)));
+    const aIndex = quantizeRangeIndex(color.a ?? 0, -abWindow, abWindow, aBins);
+    const bIndex = quantizeRangeIndex(color.b ?? 0, -abWindow, abWindow, bBins);
+    const key = `${lIndex}:${aIndex}:${bIndex}`;
+    const bucket = histogram.get(key) ?? { l: 0, a: 0, b: 0, count: 0 };
+    bucket.l += color.l ?? 0;
+    bucket.a += clamp(color.a ?? 0, -abWindow, abWindow);
+    bucket.b += clamp(color.b ?? 0, -abWindow, abWindow);
+    bucket.count += 1;
+    histogram.set(key, bucket);
+  }
+
+  const points: WeightedClusterPoint[] = Array.from(histogram.values())
+    .map((bucket) => ({
+      l: bucket.l / bucket.count,
+      a: bucket.a / bucket.count,
+      b: bucket.b / bucket.count,
+      count: bucket.count,
+      sourceCount: 1,
+      preserveLongTail: false,
+    }))
+    .sort((left, right) => right.count - left.count);
+
+  return {
+    processedPixels,
+    opaquePixels,
+    histogramBins: histogram.size,
+    points,
+  };
+}
+
+function pointDistance(left: LabPoint, right: LabPoint) {
+  return (left.l - right.l) ** 2 + (left.a - right.a) ** 2 + (left.b - right.b) ** 2;
+}
+
+function pointHex(point: LabPoint) {
+  const converted = toOklch({ mode: 'oklab', l: point.l, a: point.a, b: point.b });
+  return scientificColorFromOklch({
+    l: converted?.l ?? 0.5,
+    c: converted?.c ?? 0.08,
+    h: converted?.h ?? 0,
+    alpha: 1,
+  }).hex;
+}
+
+function pickInitialCentroids(points: WeightedClusterPoint[], k: number) {
+  const centroids: WeightedClusterPoint[] = [];
+  if (!points.length || k <= 0) {
     return centroids;
   }
 
   centroids.push(points[0]!);
+
   while (centroids.length < k) {
     let bestPoint = points[0]!;
     let bestDistance = -1;
 
     points.forEach((point) => {
-      const distance = centroids.reduce((minimum, centroid) => {
-        const delta = (point.l - centroid.l) ** 2 + (point.a - centroid.a) ** 2 + (point.b - centroid.b) ** 2;
-        return Math.min(minimum, delta);
-      }, Number.POSITIVE_INFINITY);
-
-      if (distance > bestDistance) {
-        bestDistance = distance;
+      const minDistance = centroids.reduce((minimum, centroid) => Math.min(minimum, pointDistance(point, centroid)), Number.POSITIVE_INFINITY);
+      const weightedDistance = minDistance * Math.sqrt(point.count);
+      if (weightedDistance > bestDistance) {
+        bestDistance = weightedDistance;
         bestPoint = point;
       }
     });
@@ -53,17 +161,21 @@ function pickInitialCentroids(points: LabPoint[], k: number) {
   return centroids;
 }
 
-function clusterPoints(points: LabPoint[], k: number) {
-  let centroids = pickInitialCentroids(points, k);
-  for (let iteration = 0; iteration < 8; iteration += 1) {
-    const groups = centroids.map(() => ({ l: 0, a: 0, b: 0, count: 0 }));
+function weightedClusterPoints(points: WeightedClusterPoint[], k: number) {
+  if (!points.length) {
+    return [];
+  }
+
+  let centroids = pickInitialCentroids(points, Math.min(k, points.length));
+  for (let iteration = 0; iteration < iterations; iteration += 1) {
+    const groups = centroids.map(() => ({ l: 0, a: 0, b: 0, count: 0, sourceCount: 0 }));
 
     points.forEach((point) => {
       let bestIndex = 0;
       let bestDistance = Number.POSITIVE_INFINITY;
 
       centroids.forEach((centroid, index) => {
-        const distance = (point.l - centroid.l) ** 2 + (point.a - centroid.a) ** 2 + (point.b - centroid.b) ** 2;
+        const distance = pointDistance(point, centroid);
         if (distance < bestDistance) {
           bestDistance = distance;
           bestIndex = index;
@@ -74,6 +186,7 @@ function clusterPoints(points: LabPoint[], k: number) {
       groups[bestIndex]!.a += point.a * point.count;
       groups[bestIndex]!.b += point.b * point.count;
       groups[bestIndex]!.count += point.count;
+      groups[bestIndex]!.sourceCount += point.sourceCount;
     });
 
     centroids = groups
@@ -83,10 +196,12 @@ function clusterPoints(points: LabPoint[], k: number) {
         a: group.a / group.count,
         b: group.b / group.count,
         count: group.count,
+        sourceCount: group.sourceCount,
+        preserveLongTail: false,
       }));
   }
 
-  return centroids;
+  return centroids.sort((left, right) => right.count - left.count);
 }
 
 function assessSuitability(hex: string, oklch: { l?: number; c?: number; h?: number }): SuitabilityAssessment {
@@ -112,80 +227,180 @@ function usageFromAssessment(assessment: SuitabilityAssessment) {
 
 function createClusterColor(point: LabPoint, index: number) {
   const oklch = toOklch({ mode: 'oklab', l: point.l, a: point.a, b: point.b });
-  const hexCandidate = scientificColorFromOklch(
-    { l: oklch?.l ?? 0.5, c: oklch?.c ?? 0.08, h: oklch?.h ?? index * 40, alpha: 1 },
+  const clusterColor = scientificColorFromOklch(
+    {
+      l: oklch?.l ?? 0.5,
+      c: oklch?.c ?? 0.08,
+      h: oklch?.h ?? index * 40,
+      alpha: 1,
+    },
     {
       id: createId('cluster'),
-      name: `Cluster ${index + 1}`,
+      name: `Cluster ${String(index + 1).padStart(2, '0')}`,
       source: { kind: 'image', detail: 'dominant-cluster' },
       tags: ['image-analysis'],
       usage: [],
       notes: '',
     },
   );
-  const assessment = assessSuitability(hexCandidate.hex, oklch ?? {});
+  const assessment = assessSuitability(clusterColor.hex, oklch ?? {});
+  const usage = usageFromAssessment(assessment);
 
   return {
     color: {
-      ...hexCandidate,
-      usage: usageFromAssessment(assessment),
-      notes: usageFromAssessment(assessment).length ? `Suitable for ${usageFromAssessment(assessment).join(', ')}.` : 'Needs reconstruction for scientific use.',
+      ...clusterColor,
+      usage,
+      notes: usage.length ? `Suitable for ${usage.join(', ')}.` : 'Needs reconstruction for scientific use.',
     },
     assessment,
   };
 }
 
-function mergeNearbyClusters(clusters: ImageCluster[]) {
-  const merged: ImageCluster[] = [];
-  clusters.forEach((cluster) => {
-    const existing = merged.find((candidate) => deltaE(candidate.color.hex, cluster.color.hex) < 8);
-    if (existing) {
-      existing.count += cluster.count;
-      existing.percentage += cluster.percentage;
-      existing.merged = true;
+function shouldPreserveLongTail(cluster: ImageCluster) {
+  const maxContrast = Math.max(wcagContrast(cluster.color.hex, editorialBackground), wcagContrast(cluster.color.hex, darkBackground));
+  return (
+    cluster.percentage >= summaryRetentionThreshold ||
+    (cluster.color.oklch.c >= 0.09 && cluster.percentage >= 0.004) ||
+    (maxContrast >= 3 && cluster.percentage >= 0.004)
+  );
+}
+
+function evaluatePoints(points: WeightedClusterPoint[], totalCount: number) {
+  return points
+    .slice()
+    .sort((left, right) => right.count - left.count)
+    .map((point, index): EvaluatedCluster => {
+      const derived = createClusterColor(point, index);
+      const cluster: ImageCluster = {
+        id: createId('cluster'),
+        color: derived.color,
+        count: point.count,
+        percentage: point.count / totalCount,
+        merged: point.sourceCount > 1,
+        assessment: derived.assessment,
+      };
+      const preserveLongTail = point.preserveLongTail || shouldPreserveLongTail(cluster);
+      return {
+        point: { ...point, preserveLongTail },
+        cluster,
+        preserveLongTail,
+      };
+    });
+}
+
+function mergeClusterPoints(points: WeightedClusterPoint[], threshold: number) {
+  const sorted = points.slice().sort((left, right) => right.count - left.count);
+  const merged: WeightedClusterPoint[] = [];
+
+  sorted.forEach((point) => {
+    const currentHex = pointHex(point);
+    const existingIndex = merged.findIndex((candidate) => deltaE(pointHex(candidate), currentHex) < threshold);
+
+    if (existingIndex >= 0) {
+      const existing = merged[existingIndex]!;
+      const totalCount = existing.count + point.count;
+      merged[existingIndex] = {
+        l: (existing.l * existing.count + point.l * point.count) / totalCount,
+        a: (existing.a * existing.count + point.a * point.count) / totalCount,
+        b: (existing.b * existing.count + point.b * point.count) / totalCount,
+        count: totalCount,
+        sourceCount: existing.sourceCount + point.sourceCount,
+        preserveLongTail: existing.preserveLongTail || point.preserveLongTail,
+      };
       return;
     }
 
-    merged.push({ ...cluster });
+    merged.push({ ...point });
   });
 
   return merged.sort((left, right) => right.count - left.count);
 }
 
-function clusterScientificScore(cluster: ImageCluster) {
-  const assessment = cluster.assessment;
-  if (!assessment) {
-    return cluster.percentage;
-  }
-
-  let score = cluster.percentage * 10;
-  if (assessment.categorical) score += 5;
-  if (assessment.accent) score += 3;
-  if (assessment.gradientEndpoint) score += 2;
-  if (assessment.background) score -= 1;
-  return score;
+function retainClusters(clusters: EvaluatedCluster[], minimumPercentage: number) {
+  const retained = clusters.filter((entry) => entry.cluster.percentage >= minimumPercentage || entry.preserveLongTail);
+  return retained.length > 0 ? retained : clusters.slice(0, 1);
 }
 
-function buildSuggestedPalette(clusters: ImageCluster[]): Palette {
-  const colors = clusters
-    .slice()
-    .sort((left, right) => clusterScientificScore(right) - clusterScientificScore(left))
-    .slice(0, 6)
-    .map((cluster) => cluster.color);
+function clusterScientificScore(cluster: ImageCluster) {
+  const assessment = cluster.assessment;
+  const contrastSignal = Math.max(wcagContrast(cluster.color.hex, editorialBackground), wcagContrast(cluster.color.hex, darkBackground));
+  let score = cluster.percentage * 100;
 
+  if (assessment?.categorical) score += 7;
+  if (assessment?.accent) score += 4;
+  if (assessment?.gradientEndpoint) score += 3;
+  if (assessment?.text) score += 2;
+  if (assessment?.background) score -= 2;
+  score += Math.min(cluster.color.oklch.c * 24, 4);
+  score += Math.min(Math.max(contrastSignal - 3, 0), 3);
+
+  return round(score, 3);
+}
+
+function isDistinctCandidate(candidate: ImageCluster, selected: ImageCluster[]) {
+  return selected.every((entry) => deltaE(entry.color.hex, candidate.color.hex) >= 8);
+}
+
+function buildSuggestedPalette(summaryClusters: ImageCluster[], detailClusters: ImageCluster[]): Palette {
+  const selected: ImageCluster[] = [];
+  const summaryCandidates = summaryClusters.slice().sort((left, right) => clusterScientificScore(right) - clusterScientificScore(left));
+
+  summaryCandidates.forEach((candidate) => {
+    if (selected.length >= 6) {
+      return;
+    }
+
+    if (!isDistinctCandidate(candidate, selected)) {
+      return;
+    }
+
+    selected.push(candidate);
+  });
+
+  const categoricalCount = selected.filter((cluster) => cluster.assessment?.categorical).length;
+  if (categoricalCount < 3 || selected.length < 6) {
+    const detailCandidates = detailClusters
+      .slice()
+      .sort((left, right) => clusterScientificScore(right) - clusterScientificScore(left))
+      .filter((candidate) => candidate.assessment?.categorical || candidate.assessment?.accent || candidate.assessment?.gradientEndpoint);
+
+    detailCandidates.forEach((candidate) => {
+      if (selected.length >= 6) {
+        return;
+      }
+
+      if (!isDistinctCandidate(candidate, selected)) {
+        return;
+      }
+
+      selected.push(candidate);
+    });
+  }
+
+  const paletteClusters = selected.length > 0 ? selected : summaryCandidates.slice(0, 6);
+  const colors = paletteClusters.slice(0, 6).map((cluster) => cluster.color);
   const palette = paletteFromColors('Image-Derived Study Palette', 'qualitative', colors, 'image-analysis');
+
   return {
     ...palette,
-    notes: 'Reconstructed from image clusters with suitability-aware scientific filtering.',
+    notes: 'Reconstructed from image clusters with dual-layer extraction and suitability-aware scientific filtering.',
   };
 }
 
-function createAnalyzerDiagnostics(clusters: ImageCluster[], mergedClusters: ImageCluster[]): DiagnosticItem[] {
+function createAnalyzerDiagnostics(
+  rawClusters: ImageCluster[],
+  detailClusters: EvaluatedCluster[],
+  summaryClusters: EvaluatedCluster[],
+): DiagnosticItem[] {
+  const detailLayer = detailClusters.map((entry) => entry.cluster);
+  const summaryLayer = summaryClusters.map((entry) => entry.cluster);
   const items: DiagnosticItem[] = [];
-  const categoricalCount = mergedClusters.filter((cluster) => cluster.assessment?.categorical).length;
-  const textSafeCount = mergedClusters.filter((cluster) => cluster.assessment?.text).length;
-  const backgroundSafeCount = mergedClusters.filter((cluster) => cluster.assessment?.background).length;
-  const oversaturated = mergedClusters.filter((cluster) => cluster.color.oklch.c > 0.19);
+  const categoricalCount = summaryLayer.filter((cluster) => cluster.assessment?.categorical).length;
+  const textSafeCount = summaryLayer.filter((cluster) => cluster.assessment?.text).length;
+  const backgroundSafeCount = summaryLayer.filter((cluster) => cluster.assessment?.background).length;
+  const oversaturated = summaryLayer.filter((cluster) => cluster.color.oklch.c > 0.19);
+  const preservedLongTail = detailClusters.filter((entry) => entry.preserveLongTail && entry.cluster.percentage < summaryRetentionThreshold);
+  const mergeReduction = detailLayer.length > 0 ? (detailLayer.length - summaryLayer.length) / detailLayer.length : 0;
 
   if (categoricalCount < 3) {
     items.push({
@@ -194,8 +409,8 @@ function createAnalyzerDiagnostics(clusters: ImageCluster[], mergedClusters: Ima
       severity: 'warning',
       category: 'analyzer',
       title: 'Few clusters are suitable for categorical use',
-      message: 'The image contains limited category-safe colors after perceptual merging.',
-      suggestion: 'Use the reconstructed palette instead of the raw image clusters for multi-series charts.',
+      message: 'The image contains limited category-safe colors after perceptual consolidation.',
+      suggestion: 'Use the reconstructed palette instead of the raw extraction for multi-series charts.',
     });
   }
 
@@ -236,15 +451,52 @@ function createAnalyzerDiagnostics(clusters: ImageCluster[], mergedClusters: Ima
     });
   }
 
-  if (clusters.length - mergedClusters.length >= 2) {
+  if (rawClusters.length - detailLayer.length >= 2) {
     items.push({
       id: createId('diagnostic'),
       code: 'analyzer-merged-near-duplicates',
       severity: 'info',
       category: 'analyzer',
-      title: 'Near-duplicate clusters were merged',
-      message: 'Several extracted colors were perceptually close and have already been collapsed.',
-      suggestion: 'Use the merged set to avoid redundant palette entries.',
+      title: 'Near-duplicate colors were consolidated',
+      message: 'Closely related colors were collapsed to avoid redundant palette entries.',
+      suggestion: 'Use the summary layer when you need a cleaner working palette.',
+    });
+  }
+
+  if (detailLayer.length - summaryLayer.length >= 6) {
+    items.push({
+      id: createId('diagnostic'),
+      code: 'analyzer-high-color-diversity',
+      severity: 'info',
+      category: 'analyzer',
+      title: 'The source image has high color diversity',
+      message: 'The detail layer retains many more colors than the summary layer because the image contains several distinct visual strata.',
+      suggestion: 'Inspect the detail layer before discarding small accents or annotation colors.',
+    });
+  }
+
+  if (mergeReduction >= 0.35) {
+    items.push({
+      id: createId('diagnostic'),
+      code: 'analyzer-heavy-merge',
+      severity: 'info',
+      category: 'analyzer',
+      title: 'Summary extraction merges aggressively',
+      message: 'A large share of the detail layer was collapsed to keep the summary usable as a scientific palette.',
+      suggestion: 'Switch to the detail view if you need to inspect secondary accents or long-tail colors.',
+    });
+  }
+
+  if (preservedLongTail.length > 0) {
+    items.push({
+      id: createId('diagnostic'),
+      code: 'analyzer-long-tail-preserved',
+      severity: 'info',
+      category: 'analyzer',
+      title: 'Small but meaningful colors were preserved',
+      message: 'Long-tail colors with high chroma or strong contrast survived filtering because they may carry annotations or critical emphasis.',
+      suggestion: 'Review the preserved detail clusters before finalizing a reconstruction.',
+      relatedColorIds: preservedLongTail.map((entry) => entry.cluster.color.id),
     });
   }
 
@@ -253,52 +505,27 @@ function createAnalyzerDiagnostics(clusters: ImageCluster[], mergedClusters: Ima
 
 export function analyzePixels(request: AnalyzerWorkerRequest): ImageAnalysisResult {
   const pixels = new Uint8ClampedArray(request.pixels);
-  const step = Math.max(1, Math.floor((pixels.length / 4) / 2400));
-  const points: LabPoint[] = [];
+  const { processedPixels, opaquePixels, histogramBins, points } = quantizePoints(pixels);
+  const requestedClusters = Math.min(modeDefaultClusters[request.options.detailLevel], request.options.maxColors);
+  const centroidPoints = weightedClusterPoints(points, requestedClusters);
+  const totalCount = centroidPoints.reduce((sum, centroid) => sum + centroid.count, 0) || 1;
 
-  for (let pixelIndex = 0; pixelIndex < pixels.length; pixelIndex += step * 4) {
-    const alpha = pixels[pixelIndex + 3] ?? 0;
-    if (alpha < 32) {
-      continue;
-    }
-
-    const color = toOklab({
-      mode: 'rgb',
-      r: (pixels[pixelIndex] ?? 0) / 255,
-      g: (pixels[pixelIndex + 1] ?? 0) / 255,
-      b: (pixels[pixelIndex + 2] ?? 0) / 255,
-      alpha: alpha / 255,
-    });
-
-    if (!color) {
-      continue;
-    }
-
-    points.push({ l: color.l ?? 0, a: color.a ?? 0, b: color.b ?? 0, count: 1 });
-  }
-
-  const k = Math.min(8, Math.max(4, Math.round(Math.sqrt(points.length / 150))));
-  const centroids = clusterPoints(points, k);
-  const totalCount = centroids.reduce((sum, centroid) => sum + centroid.count, 0) || 1;
-
-  const clusters: ImageCluster[] = centroids
-    .map((centroid, index) => {
-      const derived = createClusterColor(centroid, index);
-      return {
-        id: createId('cluster'),
-        color: derived.color,
-        count: centroid.count,
-        percentage: centroid.count / totalCount,
-        merged: false,
-        assessment: derived.assessment,
-      };
-    })
-    .sort((left, right) => right.count - left.count);
-
-  const mergedClusters = mergeNearbyClusters(clusters);
-  const suggestedPalette = buildSuggestedPalette(mergedClusters);
+  const rawClusters = evaluatePoints(centroidPoints, totalCount);
+  const detailMergedPoints = mergeClusterPoints(
+    rawClusters.map((entry) => entry.point),
+    3.5,
+  );
+  const detailClusters = retainClusters(evaluatePoints(detailMergedPoints, totalCount), detailRetentionThreshold);
+  const summaryMergedPoints = mergeClusterPoints(
+    detailClusters.map((entry) => entry.point),
+    7,
+  );
+  const mergedClusters = retainClusters(evaluatePoints(summaryMergedPoints, totalCount), summaryRetentionThreshold);
+  const detailLayer = detailClusters.map((entry) => entry.cluster);
+  const summaryLayer = mergedClusters.map((entry) => entry.cluster);
+  const suggestedPalette = buildSuggestedPalette(summaryLayer, detailLayer);
   const paletteDiagnostics = evaluatePalette(suggestedPalette);
-  const analyzerDiagnostics = createAnalyzerDiagnostics(clusters, mergedClusters);
+  const analyzerDiagnostics = createAnalyzerDiagnostics(rawClusters.map((entry) => entry.cluster), detailClusters, mergedClusters);
   const diagnostics = buildPaletteDiagnostics(
     Math.max(20, paletteDiagnostics.score - analyzerDiagnostics.filter((item) => item.severity === 'warning').length * 4),
     [...paletteDiagnostics.items, ...analyzerDiagnostics],
@@ -308,11 +535,21 @@ export function analyzePixels(request: AnalyzerWorkerRequest): ImageAnalysisResu
     imageId: request.imageId,
     width: request.width,
     height: request.height,
-    clusters,
-    percentages: clusters.map((cluster) => cluster.percentage),
-    mergedClusters,
+    clusters: rawClusters.map((entry) => entry.cluster),
+    percentages: summaryLayer.map((cluster) => cluster.percentage),
+    detailClusters: detailLayer,
+    mergedClusters: summaryLayer,
     suggestedPalette: { ...suggestedPalette, diagnostics },
     diagnostics,
+    stats: {
+      processedPixels,
+      opaquePixels,
+      resizeScale: round(request.width / Math.max(request.sourceWidth, 1), 4),
+      histogramBins,
+      detailClusterCount: detailLayer.length,
+      summaryClusterCount: summaryLayer.length,
+      droppedClusterCount: Math.max(0, rawClusters.length - detailLayer.length),
+    },
   };
 }
 

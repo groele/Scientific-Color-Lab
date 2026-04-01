@@ -8,6 +8,8 @@ import { SplitPanelLayout } from '@/components/ui/split-panel-layout';
 import { RouteNavigationPanel } from '@/app/route-navigation-panel';
 import { usePwaInstall } from '@/hooks/use-pwa-install';
 import {
+  AnalyzerControlsCard,
+  AnalyzerStatsSummary,
   ClusterTable,
   ClusterTreemap,
   ColorSummaryCard,
@@ -17,7 +19,8 @@ import {
 import { DiagnosticsPanel } from '@/components/workspace/diagnostics-panel';
 import { ColorSwatchButton } from '@/components/color/color-swatch-button';
 import { paletteFromColors } from '@/domain/color/palette';
-import type { ColorToken, ImageCluster, Palette } from '@/domain/models';
+import { buildPaletteDiagnostics } from '@/domain/diagnostics/engine';
+import type { ColorToken, DiagnosticItem, ImageAnalysisResult, ImageCluster, Palette } from '@/domain/models';
 import { useAnalyzerStore } from '@/stores/analyzer-store';
 import { useLibraryStore } from '@/stores/library-store';
 import { useWorkspaceStore } from '@/stores/workspace-store';
@@ -65,12 +68,14 @@ function deriveSuitabilitySummary(clusters: ImageCluster[]) {
   };
 }
 
-function clusterSummary(cluster: ImageCluster | null) {
+function clusterSummary(cluster: ImageCluster | null, isZh: boolean) {
   if (!cluster) {
     return null;
   }
 
-  return `${cluster.color.hex} · ${Math.round(cluster.percentage * 100)}% share · ${cluster.count} sampled pixels`;
+  return isZh
+    ? `${cluster.color.hex} · 占比 ${Math.round(cluster.percentage * 100)}% · ${cluster.count} 个采样像素`
+    : `${cluster.color.hex} · ${Math.round(cluster.percentage * 100)}% share · ${cluster.count} sampled pixels`;
 }
 
 function clusterSuitability(cluster: ImageCluster | null, isZh: boolean) {
@@ -94,13 +99,30 @@ function clusterSuitability(cluster: ImageCluster | null, isZh: boolean) {
       : 'Needs scientific reconstruction before publication use.';
 }
 
-function createRawPalette(result: NonNullable<ReturnType<typeof useAnalyzerStore.getState>['result']>): Palette {
+function createRawPalette(result: ImageAnalysisResult): Palette {
   return paletteFromColors(
     'Raw Image Clusters',
     'qualitative',
     result.mergedClusters.slice(0, 6).map((cluster) => cluster.color),
     'image-analysis',
   );
+}
+
+function deriveAnalyzerDiagnostics(result: ImageAnalysisResult, clusterLayer: 'summary' | 'detail') {
+  const items: DiagnosticItem[] = [...result.diagnostics.items];
+  if (clusterLayer === 'summary' && result.detailClusters.length - result.mergedClusters.length >= 6) {
+    items.unshift({
+      id: crypto.randomUUID(),
+      code: 'analyzer-detail-layer-recommended',
+      severity: 'info',
+      category: 'analyzer',
+      title: 'Detail layer recommended',
+      message: 'The detail layer preserves substantially more colors than the summary layer.',
+      suggestion: 'Inspect the detail layer if you need secondary accents, annotations, or long-tail colors.',
+    });
+  }
+
+  return buildPaletteDiagnostics(result.diagnostics.score, items);
 }
 
 export function AnalyzerPage() {
@@ -112,10 +134,14 @@ export function AnalyzerPage() {
   const result = useAnalyzerStore((state) => state.result);
   const isAnalyzing = useAnalyzerStore((state) => state.isAnalyzing);
   const error = useAnalyzerStore((state) => state.error);
+  const options = useAnalyzerStore((state) => state.options);
+  const clusterLayer = useAnalyzerStore((state) => state.clusterLayer);
   const selectedClusterId = useAnalyzerStore((state) => state.selectedClusterId);
   const selectedSuggestedColorId = useAnalyzerStore((state) => state.selectedSuggestedColorId);
   const analyzeFile = useAnalyzerStore((state) => state.analyzeFile);
   const analyzeBlob = useAnalyzerStore((state) => state.analyzeBlob);
+  const setOptions = useAnalyzerStore((state) => state.setOptions);
+  const setClusterLayer = useAnalyzerStore((state) => state.setClusterLayer);
   const selectCluster = useAnalyzerStore((state) => state.selectCluster);
   const selectSuggestedColor = useAnalyzerStore((state) => state.selectSuggestedColor);
   const setError = useAnalyzerStore((state) => state.setError);
@@ -124,18 +150,27 @@ export function AnalyzerPage() {
   const remember = useLibraryStore((state) => state.remember);
   const [paletteMode, setPaletteMode] = useState<'raw' | 'scientific'>('scientific');
 
-  const selectedCluster = result?.mergedClusters.find((cluster) => cluster.id === selectedClusterId) ?? result?.mergedClusters[0] ?? null;
+  const activeClusters = clusterLayer === 'detail' ? result?.detailClusters ?? [] : result?.mergedClusters ?? [];
+  const selectedCluster = activeClusters.find((cluster) => cluster.id === selectedClusterId) ?? activeClusters[0] ?? null;
   const selectedSuggestedColor =
     result?.suggestedPalette.colors.find((color) => color.id === selectedSuggestedColorId) ?? result?.suggestedPalette.colors[0] ?? null;
   const inspectorColor: ColorToken | null = selectedSuggestedColorId ? selectedSuggestedColor : selectedCluster?.color ?? selectedSuggestedColor;
-  const inspectorMetaLabel = selectedSuggestedColorId ? t('analyzer:suitability') : t('analyzer:analysisSummary');
+  const inspectorMetaLabel = selectedSuggestedColorId
+    ? t('analyzer:suitability')
+    : clusterLayer === 'detail'
+      ? (isZh ? 'Detail 层概览' : 'Detail layer summary')
+      : t('analyzer:analysisSummary');
   const inspectorMetaValue = selectedSuggestedColorId
     ? selectedSuggestedColor?.usage.join(', ') || (isZh ? '已重构为更适合科研使用的颜色。' : 'Reconstructed for scientific use.')
-    : clusterSummary(selectedCluster) ?? undefined;
+    : clusterSummary(selectedCluster, isZh) ?? undefined;
   const inspectorSecondary = selectedSuggestedColorId ? selectedSuggestedColor?.notes : clusterSuitability(selectedCluster, isZh);
   const suitabilitySummary = result ? deriveSuitabilitySummary(result.mergedClusters) : null;
   const rawPalette = useMemo(() => (result ? createRawPalette(result) : null), [result]);
   const activePalette = paletteMode === 'raw' && rawPalette ? rawPalette : result?.suggestedPalette ?? null;
+  const analyzerDiagnostics = useMemo(() => (result ? deriveAnalyzerDiagnostics(result, clusterLayer) : null), [clusterLayer, result]);
+  const layerHeading = clusterLayer === 'detail'
+    ? (isZh ? '扩展颜色层' : 'Detail layer')
+    : (isZh ? '主色摘要层' : 'Summary layer');
 
   useEffect(() => {
     const handlePaste = (event: ClipboardEvent) => {
@@ -181,6 +216,14 @@ export function AnalyzerPage() {
             onSample={() => void handleSampleLoad()}
           />
 
+          <AnalyzerControlsCard
+            options={options}
+            clusterLayer={clusterLayer}
+            stats={result?.stats ?? null}
+            onOptionsChange={(nextOptions) => void setOptions(nextOptions)}
+            onLayerChange={(layer) => setClusterLayer(layer)}
+          />
+
           {!result && !isAnalyzing && !error ? (
             <Card>
               <CardHeader className="pb-3">
@@ -220,7 +263,13 @@ export function AnalyzerPage() {
 
           {result ? (
             <>
-              <ClusterTreemap clusters={result.mergedClusters} selectedClusterId={selectedCluster?.id ?? null} onSelect={(clusterId) => selectCluster(clusterId)} />
+              <AnalyzerStatsSummary stats={result.stats} />
+              <ClusterTreemap
+                heading={layerHeading}
+                clusters={activeClusters}
+                selectedClusterId={selectedCluster?.id ?? null}
+                onSelect={(clusterId) => selectCluster(clusterId)}
+              />
               {suitabilitySummary ? (
                 <Card>
                   <CardHeader className="pb-3">
@@ -234,7 +283,12 @@ export function AnalyzerPage() {
                   </CardContent>
                 </Card>
               ) : null}
-              <ClusterTable clusters={result.mergedClusters} selectedClusterId={selectedCluster?.id ?? null} onSelect={(clusterId) => selectCluster(clusterId)} />
+              <ClusterTable
+                heading={layerHeading}
+                clusters={activeClusters}
+                selectedClusterId={selectedCluster?.id ?? null}
+                onSelect={(clusterId) => selectCluster(clusterId)}
+              />
               <ReplacementSuggestionList
                 palette={result.suggestedPalette}
                 selectedColorId={selectedSuggestedColor?.id ?? null}
@@ -277,6 +331,7 @@ export function AnalyzerPage() {
                           }
 
                           const clusterId = result.mergedClusters.find((cluster) => cluster.color.id === color.id)?.id ?? null;
+                          setClusterLayer('summary');
                           selectCluster(clusterId);
                         }}
                       />
@@ -327,7 +382,7 @@ export function AnalyzerPage() {
               </CardContent>
             </Card>
           ) : null}
-          {result ? <DiagnosticsPanel diagnostics={result.diagnostics} /> : null}
+          {analyzerDiagnostics ? <DiagnosticsPanel diagnostics={analyzerDiagnostics} /> : null}
         </>
       }
     />

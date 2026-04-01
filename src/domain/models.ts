@@ -32,6 +32,8 @@ export type ExportScope = 'color' | 'palette' | 'project';
 export type ExportFormat = 'json' | 'csv' | 'css' | 'tailwind' | 'matplotlib' | 'plotly' | 'matlab' | 'summary';
 export type NotesBehavior = 'inline' | 'separate' | 'omit';
 export type WelcomeAction = 'new-palette' | 'extract-image' | 'open-library' | 'open-recent';
+export type AnalyzerDetailLevel = 'compact' | 'balanced' | 'complete';
+export type AnalyzerClusterLayer = 'summary' | 'detail';
 export type TemplateChartType =
   | 'line-plot'
   | 'scatter-plot'
@@ -150,7 +152,11 @@ export interface DiagnosticItem {
     | 'analyzer-no-text-safe'
     | 'analyzer-no-background-safe'
     | 'analyzer-oversaturated'
-    | 'analyzer-merged-near-duplicates';
+    | 'analyzer-merged-near-duplicates'
+    | 'analyzer-high-color-diversity'
+    | 'analyzer-heavy-merge'
+    | 'analyzer-long-tail-preserved'
+    | 'analyzer-detail-layer-recommended';
   severity: DiagnosticSeverity;
   category:
     | 'palette-risk'
@@ -296,15 +302,32 @@ export interface ImageCluster {
   assessment?: SuitabilityAssessment;
 }
 
+export interface AnalyzerOptions {
+  detailLevel: AnalyzerDetailLevel;
+  maxColors: 8 | 12 | 16 | 24;
+}
+
+export interface ImageAnalysisStats {
+  processedPixels: number;
+  opaquePixels: number;
+  resizeScale: number;
+  histogramBins: number;
+  detailClusterCount: number;
+  summaryClusterCount: number;
+  droppedClusterCount: number;
+}
+
 export interface ImageAnalysisResult {
   imageId: string;
   width: number;
   height: number;
   clusters: ImageCluster[];
   percentages: number[];
+  detailClusters: ImageCluster[];
   mergedClusters: ImageCluster[];
   suggestedPalette: Palette;
   diagnostics: PaletteDiagnostics;
+  stats: ImageAnalysisStats;
 }
 
 export interface Project {
@@ -463,9 +486,12 @@ export interface RawPresetPalette {
 
 export interface AnalyzerWorkerRequest {
   imageId: string;
+  sourceWidth: number;
+  sourceHeight: number;
   width: number;
   height: number;
   pixels: ArrayBuffer;
+  options: AnalyzerOptions;
 }
 
 export interface AnalyzerWorkerResponse {

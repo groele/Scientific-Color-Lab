@@ -1,16 +1,25 @@
-import { ClipboardPaste, ImagePlus, RotateCcw, Upload } from 'lucide-react';
+import { ClipboardPaste, ImagePlus, Layers3, RotateCcw, SlidersHorizontal, Upload } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select } from '@/components/ui/select';
 import { ColorSwatchButton } from '@/components/color/color-swatch-button';
 import { cn, formatPercent } from '@/lib/utils';
 import { useColorActions } from '@/hooks/use-color-actions';
-import type { ColorToken, ImageCluster, Palette } from '@/domain/models';
+import type {
+  AnalyzerClusterLayer,
+  AnalyzerDetailLevel,
+  AnalyzerOptions,
+  ColorToken,
+  ImageAnalysisStats,
+  ImageCluster,
+  Palette,
+} from '@/domain/models';
 
 function suitabilityLabel(cluster: ImageCluster, isZh: boolean) {
   const assessment = cluster.assessment;
   if (!assessment) {
-    return isZh ? '需要重构' : 'Needs reconstruction';
+    return isZh ? '需要进一步重构' : 'Needs reconstruction';
   }
 
   const labels = [];
@@ -19,7 +28,7 @@ function suitabilityLabel(cluster: ImageCluster, isZh: boolean) {
   if (assessment.background) labels.push(isZh ? '背景' : 'background');
   if (assessment.text) labels.push(isZh ? '文字' : 'text');
   if (assessment.accent) labels.push(isZh ? '强调' : 'accent');
-  return labels.length ? labels.join(', ') : isZh ? '需要重构' : 'needs reconstruction';
+  return labels.length ? labels.join(', ') : isZh ? '需要进一步重构' : 'needs reconstruction';
 }
 
 interface ImageDropzoneProps {
@@ -87,19 +96,113 @@ export function ImageDropzone({ onFile, onSample, onReset, hasImage = false }: I
   );
 }
 
+interface AnalyzerControlsCardProps {
+  options: AnalyzerOptions;
+  clusterLayer: AnalyzerClusterLayer;
+  stats?: ImageAnalysisStats | null;
+  onOptionsChange: (options: Partial<AnalyzerOptions>) => void;
+  onLayerChange: (layer: AnalyzerClusterLayer) => void;
+}
+
+export function AnalyzerControlsCard({
+  options,
+  clusterLayer,
+  stats,
+  onOptionsChange,
+  onLayerChange,
+}: AnalyzerControlsCardProps) {
+  const { i18n } = useTranslation();
+  const isZh = i18n.language === 'zh-CN';
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-2">
+          <SlidersHorizontal className="h-4 w-4 text-foreground/55" />
+          <CardTitle>{isZh ? '提取控制' : 'Extraction controls'}</CardTitle>
+        </div>
+      </CardHeader>
+      <CardContent className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
+        <div className="grid gap-3 md:grid-cols-3">
+          <label className="space-y-2 text-sm">
+            <span className="section-label">{isZh ? '提取模式' : 'Extraction mode'}</span>
+            <Select
+              value={options.detailLevel}
+              onChange={(event) => onOptionsChange({ detailLevel: event.target.value as AnalyzerDetailLevel })}
+            >
+              <option value="compact">{isZh ? '紧凑 Compact' : 'Compact'}</option>
+              <option value="balanced">{isZh ? '平衡 Balanced' : 'Balanced'}</option>
+              <option value="complete">{isZh ? '完整 Complete' : 'Complete'}</option>
+            </Select>
+          </label>
+
+          <label className="space-y-2 text-sm">
+            <span className="section-label">{isZh ? '颜色上限' : 'Max colors'}</span>
+            <Select
+              value={String(options.maxColors)}
+              onChange={(event) =>
+                onOptionsChange({ maxColors: Number(event.target.value) as AnalyzerOptions['maxColors'] })
+              }
+            >
+              {[8, 12, 16, 24].map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </Select>
+          </label>
+
+          <label className="space-y-2 text-sm">
+            <span className="section-label">{isZh ? '结果视图' : 'View'}</span>
+            <Select value={clusterLayer} onChange={(event) => onLayerChange(event.target.value as AnalyzerClusterLayer)}>
+              <option value="summary">{isZh ? '主色摘要 Summary' : 'Summary'}</option>
+              <option value="detail">{isZh ? '扩展颜色层 Detail' : 'Detail'}</option>
+            </Select>
+          </label>
+        </div>
+
+        <div className="grid gap-3 rounded-2xl border border-border/80 bg-muted/25 p-3 text-sm md:grid-cols-2 xl:grid-cols-4">
+          <div>
+            <div className="section-label">{isZh ? '处理像素' : 'Processed'}</div>
+            <div className="mt-1 font-medium text-foreground">{stats?.opaquePixels?.toLocaleString() ?? '—'}</div>
+          </div>
+          <div>
+            <div className="section-label">{isZh ? '直方图箱数' : 'Bins'}</div>
+            <div className="mt-1 font-medium text-foreground">{stats?.histogramBins?.toLocaleString() ?? '—'}</div>
+          </div>
+          <div>
+            <div className="section-label">{isZh ? 'Detail / Summary' : 'Detail / Summary'}</div>
+            <div className="mt-1 font-medium text-foreground">
+              {stats ? `${stats.detailClusterCount} / ${stats.summaryClusterCount}` : '—'}
+            </div>
+          </div>
+          <div>
+            <div className="section-label">{isZh ? '缩放比例' : 'Resize scale'}</div>
+            <div className="mt-1 font-medium text-foreground">{stats ? `${Math.round(stats.resizeScale * 100)}%` : '—'}</div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 interface ClusterTreemapProps {
   clusters: ImageCluster[];
+  heading?: string;
   selectedClusterId?: string | null;
   onSelect?: (clusterId: string) => void;
 }
 
-export function ClusterTreemap({ clusters, selectedClusterId, onSelect }: ClusterTreemapProps) {
+export function ClusterTreemap({ clusters, heading, selectedClusterId, onSelect }: ClusterTreemapProps) {
   const { t } = useTranslation(['analyzer']);
   const { copyHex } = useColorActions();
   const total = clusters.reduce((sum, cluster) => sum + cluster.count, 0) || 1;
   return (
     <div className="panel-surface overflow-hidden p-4">
-      <div className="section-label">Cluster Treemap</div>
+      <div className="flex items-center justify-between gap-3">
+        <div className="section-label">{heading ?? 'Cluster Treemap'}</div>
+        <div className="text-xs text-foreground/55">{clusters.length}</div>
+      </div>
       <div className="mt-3 flex h-24 overflow-hidden rounded-xl">
         {clusters.map((cluster) => {
           const selected = cluster.id === selectedClusterId;
@@ -129,17 +232,18 @@ export function ClusterTreemap({ clusters, selectedClusterId, onSelect }: Cluste
 
 interface ClusterTableProps {
   clusters: ImageCluster[];
+  heading?: string;
   selectedClusterId?: string | null;
   onSelect?: (clusterId: string) => void;
 }
 
-export function ClusterTable({ clusters, selectedClusterId, onSelect }: ClusterTableProps) {
+export function ClusterTable({ clusters, heading, selectedClusterId, onSelect }: ClusterTableProps) {
   const { t, i18n } = useTranslation(['analyzer']);
   const isZh = i18n.language === 'zh-CN';
   return (
     <div className="panel-surface overflow-hidden">
       <div className="border-b border-border/80 px-4 py-3">
-        <div className="section-label">{t('analyzer:dominantColors')}</div>
+        <div className="section-label">{heading ?? t('analyzer:dominantColors')}</div>
       </div>
       <div className="overflow-auto p-4">
         <div className="grid gap-3">
@@ -185,7 +289,9 @@ interface ReplacementSuggestionListProps {
 }
 
 export function ReplacementSuggestionList({ palette, selectedColorId, onSelect }: ReplacementSuggestionListProps) {
-  const { t } = useTranslation(['analyzer']);
+  const { t, i18n } = useTranslation(['analyzer']);
+  const isZh = i18n.language === 'zh-CN';
+
   return (
     <div className="panel-surface p-4">
       <div className="section-label">{t('analyzer:replacementSuggestions')}</div>
@@ -210,7 +316,9 @@ export function ReplacementSuggestionList({ palette, selectedColorId, onSelect }
             <ColorSwatchButton color={color} compact selected={color.id === selectedColorId} onSelect={() => onSelect?.(color.id)} />
             <div className="mt-3 font-medium text-foreground">{color.name}</div>
             <div className="font-mono text-xs uppercase tracking-[0.18em] text-foreground/55">{color.hex}</div>
-            <div className="mt-2 text-xs text-foreground/60">{color.usage.join(', ') || 'reconstructed for scientific use'}</div>
+            <div className="mt-2 text-xs text-foreground/60">
+              {color.usage.join(', ') || (isZh ? '已重构为更适合科研使用的颜色' : 'reconstructed for scientific use')}
+            </div>
           </div>
         ))}
       </div>
@@ -252,6 +360,45 @@ export function ColorSummaryCard({
             {t('common:noSelection')}
           </div>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function AnalyzerStatsSummary({
+  stats,
+}: {
+  stats: ImageAnalysisStats;
+}) {
+  const { i18n } = useTranslation();
+  const isZh = i18n.language === 'zh-CN';
+  const mergeSaved = Math.max(stats.detailClusterCount - stats.summaryClusterCount, 0);
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-2">
+          <Layers3 className="h-4 w-4 text-foreground/55" />
+          <CardTitle>{isZh ? '提色统计' : 'Extraction stats'}</CardTitle>
+        </div>
+      </CardHeader>
+      <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-2xl border border-border/80 bg-muted/35 p-3 text-sm">
+          <div className="section-label">{isZh ? '有效像素' : 'Opaque pixels'}</div>
+          <div className="mt-1 font-medium text-foreground">{stats.opaquePixels.toLocaleString()}</div>
+        </div>
+        <div className="rounded-2xl border border-border/80 bg-muted/35 p-3 text-sm">
+          <div className="section-label">{isZh ? 'Detail 层' : 'Detail layer'}</div>
+          <div className="mt-1 font-medium text-foreground">{stats.detailClusterCount}</div>
+        </div>
+        <div className="rounded-2xl border border-border/80 bg-muted/35 p-3 text-sm">
+          <div className="section-label">{isZh ? 'Summary 层' : 'Summary layer'}</div>
+          <div className="mt-1 font-medium text-foreground">{stats.summaryClusterCount}</div>
+        </div>
+        <div className="rounded-2xl border border-border/80 bg-muted/35 p-3 text-sm">
+          <div className="section-label">{isZh ? '合并减少' : 'Merged away'}</div>
+          <div className="mt-1 font-medium text-foreground">{mergeSaved}</div>
+        </div>
       </CardContent>
     </Card>
   );

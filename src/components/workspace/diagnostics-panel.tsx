@@ -8,6 +8,7 @@ import type { DiagnosticQuickFixId, PaletteDiagnostics } from '@/domain/models';
 interface DiagnosticsPanelProps {
   diagnostics: PaletteDiagnostics;
   onQuickFix?: (fixId: DiagnosticQuickFixId) => void;
+  summaryOnly?: boolean;
 }
 
 function statusIcon(status: PaletteDiagnostics['status']) {
@@ -34,7 +35,7 @@ function statusTone(status: PaletteDiagnostics['status']) {
   }
 }
 
-export function DiagnosticsPanel({ diagnostics, onQuickFix }: DiagnosticsPanelProps) {
+export function DiagnosticsPanel({ diagnostics, onQuickFix, summaryOnly = false }: DiagnosticsPanelProps) {
   const { t } = useTranslation(['common', 'diagnostics']);
   const [expanded, setExpanded] = useState(diagnostics.status === 'high-risk');
 
@@ -73,19 +74,21 @@ export function DiagnosticsPanel({ diagnostics, onQuickFix }: DiagnosticsPanelPr
               <div className="section-label">{t('diagnostics:score')}</div>
               <div className="mt-1 font-editorial text-2xl tracking-tight text-foreground">{diagnostics.score}</div>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => setExpanded((current) => !current)}>
-              {expanded ? (
-                <>
-                  <ChevronUp className="mr-2 h-4 w-4" />
-                  {t('common:hide')}
-                </>
-              ) : (
-                <>
-                  <ChevronDown className="mr-2 h-4 w-4" />
-                  {t('common:viewDetails')}
-                </>
-              )}
-            </Button>
+            {!summaryOnly ? (
+              <Button variant="ghost" size="sm" onClick={() => setExpanded((current) => !current)}>
+                {expanded ? (
+                  <>
+                    <ChevronUp className="mr-2 h-4 w-4" />
+                    {t('common:hide')}
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="mr-2 h-4 w-4" />
+                    {t('common:viewDetails')}
+                  </>
+                )}
+              </Button>
+            ) : null}
           </div>
           <p className="mt-3 text-sm text-foreground/68">
             {diagnostics.status === 'healthy'
@@ -113,7 +116,7 @@ export function DiagnosticsPanel({ diagnostics, onQuickFix }: DiagnosticsPanelPr
           </div>
         )}
 
-        {diagnostics.quickFixes.length ? (
+        {!summaryOnly && diagnostics.quickFixes.length ? (
           <div className="space-y-2">
             <div className="section-label">{t('diagnostics:quickFixes')}</div>
             <div className="grid gap-2">
@@ -136,7 +139,7 @@ export function DiagnosticsPanel({ diagnostics, onQuickFix }: DiagnosticsPanelPr
           </div>
         ) : null}
 
-        {expanded && diagnostics.items.length ? (
+        {!summaryOnly && expanded && diagnostics.items.length ? (
           <div className="space-y-2">
             <div className="section-label">{t('common:viewDetails')}</div>
             {diagnostics.items.map((item) => (

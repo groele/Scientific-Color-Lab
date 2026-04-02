@@ -416,6 +416,23 @@ export interface AppPreferences {
 
 export interface PersistedSettings extends AppPreferences {}
 
+export interface StartupSnapshot {
+  version: number;
+  language: LanguageCode;
+  backgroundMode: BackgroundMode;
+  copyFormat: CopyFormat;
+  showWelcome: boolean;
+  lastWorkspaceRoute?: string;
+  updatedAt: string;
+}
+
+export interface AppBootstrapState {
+  phase: 'shell-ready' | 'restoring' | 'ready' | 'degraded' | 'failed';
+  issues: string[];
+  storageMode: 'persistent' | 'memory';
+  restoredFrom: 'snapshot' | 'dexie' | 'memory';
+}
+
 export interface ExportProfile {
   id: string;
   name: string;

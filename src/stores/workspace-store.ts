@@ -9,8 +9,6 @@ import {
 } from '@/domain/color/adjustment';
 import { evaluatePalette } from '@/domain/diagnostics/engine';
 import { scientificColorFromString } from '@/domain/color/convert';
-import { templateCatalog } from '@/data/templates/catalog';
-import { templateToPalette } from '@/domain/templates/query-service';
 import type {
   AdjustmentState,
   ColorToken,
@@ -25,7 +23,7 @@ import type {
 import { useHistoryStore } from '@/stores/history-store';
 
 function initialPalette() {
-  return templateToPalette(templateCatalog[0]!);
+  return createPaletteFromHexes('Scientific Starter', 'qualitative', ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']);
 }
 
 function reorder<T>(items: T[], from: number, to: number) {

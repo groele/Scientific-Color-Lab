@@ -12,14 +12,12 @@ import { Select } from '@/components/ui/select';
 import { SplitPanelLayout } from '@/components/ui/split-panel-layout';
 import { Textarea } from '@/components/ui/textarea';
 import { useLibraryHydration } from '@/hooks/use-library-hydration';
-import { usePwaInstall } from '@/hooks/use-pwa-install';
 import { useLibraryStore } from '@/stores/library-store';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 
 export function LibraryPage() {
   const { t } = useTranslation(['common', 'library']);
   const navigate = useNavigate();
-  const { canInstall, isInstalled, install } = usePwaInstall();
   const hydrated = useLibraryHydration();
   const palettes = useLibraryStore((state) => state.palettes);
   const favorites = useLibraryStore((state) => state.favorites);
@@ -176,7 +174,7 @@ export function LibraryPage() {
     <SplitPanelLayout
       left={
         <>
-          <RouteNavigationPanel canInstall={canInstall} isInstalled={isInstalled} onInstall={() => void install()} />
+          <RouteNavigationPanel />
           <Card>
             <CardHeader className="pb-3">
               <CardTitle>{t('library:searchTitle')}</CardTitle>

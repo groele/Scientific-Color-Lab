@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
@@ -10,30 +10,36 @@ import { useToast } from '@/components/ui/toast-provider';
 import { RouteNavigationPanel } from '@/app/route-navigation-panel';
 import { ViewTabs } from '@/components/workspace/view-tabs';
 import { PaletteStrip } from '@/components/workspace/palette-strip';
-import { TemplateLibraryPanel } from '@/components/workspace/template-library-panel';
-import { PairingRecommendationPanel } from '@/components/workspace/pairing-recommendation-panel';
 import { HighFrequencyAdjustmentPanel } from '@/components/workspace/high-frequency-adjustment-panel';
-import { AdjustmentHistoryPanel } from '@/components/workspace/adjustment-history-panel';
-import { ScientificMatrixPanel } from '@/components/workspace/scientific-matrix-panel';
-import { GradientEditorPanel } from '@/components/workspace/gradient-editor-panel';
-import { FigurePreviewPanel } from '@/components/workspace/figure-preview-panel';
 import { DiagnosticsPanel } from '@/components/workspace/diagnostics-panel';
 import { InspectorPanel } from '@/components/workspace/inspector-panel';
 import { WelcomeOverlay } from '@/components/workspace/welcome-overlay';
-import { AccessibilityPanel } from '@/components/workspace/accessibility-panel';
 import { ColorSwatchButton } from '@/components/color/color-swatch-button';
-import { useLibraryHydration } from '@/hooks/use-library-hydration';
-import { usePaletteDerivations } from '@/hooks/use-palette-derivations';
-import { usePwaInstall } from '@/hooks/use-pwa-install';
+import { generateColorMatrix } from '@/domain/color/matrix';
+import { createConceptGradient, createCyclicGradient, createDivergingGradient, createPaletteGradient, createSequentialGradient } from '@/domain/color/gradients';
+import { generateTonalRamp } from '@/domain/color/ramp';
 import { scientificColorFromString } from '@/domain/color/convert';
-import { applyDiagnosticQuickFix } from '@/domain/diagnostics/quick-fixes';
-import { templateCatalog } from '@/data/templates/catalog';
-import { templateToPalette } from '@/domain/templates/query-service';
+import { buildPairingRecommendationGroups } from '@/domain/pairing/engine';
 import type { PaletteClass, WorkspaceView } from '@/domain/models';
-import { useLibraryStore } from '@/stores/library-store';
+import { useI18nStore } from '@/stores/i18n-store';
 import { usePreferencesStore } from '@/stores/preferences-store';
-import { useTemplateStore } from '@/stores/template-store';
 import { useWorkspaceStore } from '@/stores/workspace-store';
+
+const TemplateLibraryPanel = lazy(() => import('@/components/workspace/template-library-panel').then((module) => ({ default: module.TemplateLibraryPanel })));
+const PairingRecommendationPanel = lazy(() => import('@/components/workspace/pairing-recommendation-panel').then((module) => ({ default: module.PairingRecommendationPanel })));
+const AdjustmentHistoryPanel = lazy(() => import('@/components/workspace/adjustment-history-panel').then((module) => ({ default: module.AdjustmentHistoryPanel })));
+const ScientificMatrixPanel = lazy(() => import('@/components/workspace/scientific-matrix-panel').then((module) => ({ default: module.ScientificMatrixPanel })));
+const GradientEditorPanel = lazy(() => import('@/components/workspace/gradient-editor-panel').then((module) => ({ default: module.GradientEditorPanel })));
+const FigurePreviewPanel = lazy(() => import('@/components/workspace/figure-preview-panel').then((module) => ({ default: module.FigurePreviewPanel })));
+const AccessibilityPanel = lazy(() => import('@/components/workspace/accessibility-panel').then((module) => ({ default: module.AccessibilityPanel })));
+
+function PanelFallback({ label }: { label: string }) {
+  return (
+    <Card>
+      <CardContent className="p-6 text-sm text-foreground/65">{label}</CardContent>
+    </Card>
+  );
+}
 
 function SwatchSection({
   title,
@@ -75,7 +81,6 @@ export function WorkspacePage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { pushToast } = useToast();
-  const { canInstall, isInstalled, install } = usePwaInstall();
   const currentPalette = useWorkspaceStore((state) => state.currentPalette);
   const selectedColorId = useWorkspaceStore((state) => state.selectedColorId);
   const selectedColor = useWorkspaceStore((state) => state.getSelectedColor());
@@ -96,14 +101,10 @@ export function WorkspacePage() {
   const setSelectedColorNotes = useWorkspaceStore((state) => state.setSelectedColorNotes);
   const setFigureType = useWorkspaceStore((state) => state.setFigureType);
   const figureType = useWorkspaceStore((state) => state.figureContext.type);
-  const projectId = useLibraryStore((state) => state.projects[0]?.id);
-  const savePalette = useLibraryStore((state) => state.savePalette);
-  const remember = useLibraryStore((state) => state.remember);
+  const figureContext = useWorkspaceStore((state) => state.figureContext);
   const showWelcome = usePreferencesStore((state) => state.showWelcome);
   const setShowWelcome = usePreferencesStore((state) => state.setShowWelcome);
-  const markTemplateRecent = useTemplateStore((state) => state.markRecent);
-  const { toneRamp, matrix, gradients, diagnostics, pairingGroups } = usePaletteDerivations();
-  const libraryHydrated = useLibraryHydration();
+  const language = useI18nStore((state) => state.language);
 
   const [baseHex, setBaseHex] = useState(selectedColor.hex);
   const [paletteClass, setPaletteClass] = useState<PaletteClass>(currentPalette.class);
@@ -114,6 +115,21 @@ export function WorkspacePage() {
       setActiveView(view);
     }
   }, [activeView, searchParams, setActiveView]);
+
+  useEffect(() => {
+    if (selectedColor.hex !== baseHex) {
+      setBaseHex(selectedColor.hex);
+    }
+  }, [selectedColor.hex]);
+
+  useEffect(() => {
+    performance.mark('workspace-interactive');
+    try {
+      performance.measure('workspace-interactive', 'app-shell-visible', 'workspace-interactive');
+    } catch {
+      // Ignore duplicate or missing marks in non-browser test environments.
+    }
+  }, []);
 
   const viewItems = [
     { id: 'swatches', label: t('workspace:swatches') },
@@ -127,7 +143,38 @@ export function WorkspacePage() {
     { id: 'inspector', label: t('workspace:inspector') },
   ] as const;
 
-  const applyTemplate = (templateId: string) => {
+  const toneRamp = useMemo(() => (activeView === 'tone-ramp' ? generateTonalRamp(selectedColor, 11) : []), [activeView, selectedColor]);
+  const matrix = useMemo(
+    () => (activeView === 'scientific-grid' ? generateColorMatrix(selectedColor, useWorkspaceStore.getState().matrixMode, useWorkspaceStore.getState().matrixDensity) : null),
+    [activeView, selectedColor],
+  );
+  const gradients = useMemo(
+    () =>
+      activeView === 'gradient'
+        ? [
+            createPaletteGradient(currentPalette),
+            createSequentialGradient(selectedColor),
+            createDivergingGradient(selectedColor),
+            createCyclicGradient(selectedColor),
+            createConceptGradient(selectedColor),
+          ]
+        : [],
+    [activeView, currentPalette, selectedColor],
+  );
+  const pairingGroups = useMemo(
+    () => (activeView === 'pairing' ? buildPairingRecommendationGroups(selectedColor, figureContext, language) : []),
+    [activeView, figureContext, language, selectedColor],
+  );
+  const diagnostics = currentPalette.diagnostics;
+
+  const applyTemplate = async (templateId: string) => {
+    const [{ templateCatalog }, { templateToPalette }, { useTemplateStore }, { useLibraryStore }] = await Promise.all([
+      import('@/data/templates/catalog'),
+      import('@/domain/templates/query-service'),
+      import('@/stores/template-store'),
+      import('@/stores/library-store'),
+    ]);
+
     const template = templateCatalog.find((entry) => entry.id === templateId);
     if (!template) {
       return;
@@ -135,9 +182,9 @@ export function WorkspacePage() {
 
     const palette = templateToPalette(template);
     applyTemplatePalette(palette);
-    markTemplateRecent(templateId);
-    void remember('template', templateId, template.name, '/workspace');
-    void setShowWelcome(false);
+    useTemplateStore.getState().markRecent(templateId);
+    await useLibraryStore.getState().remember('template', templateId, template.name, '/workspace');
+    await setShowWelcome(false);
   };
 
   const insertHexes = (hexes: string[]) => {
@@ -153,13 +200,21 @@ export function WorkspacePage() {
     insertColorsIntoPalette(colors);
   };
 
-  const handleSavePalette = () => {
+  const handleSavePalette = async () => {
+    const { useLibraryStore } = await import('@/stores/library-store');
+    const libraryStore = useLibraryStore.getState();
+    if (!libraryStore.hydrated) {
+      await libraryStore.hydrate();
+    }
+
+    const projectId = libraryStore.projects[0]?.id;
     if (!projectId) {
+      pushToast(t('common:storageUnavailable'));
       return;
     }
 
-    void savePalette(currentPalette, projectId);
-    void remember('palette', currentPalette.id, currentPalette.name, '/workspace');
+    await libraryStore.savePalette(currentPalette, projectId);
+    await libraryStore.remember('palette', currentPalette.id, currentPalette.name, '/workspace');
   };
 
   const centerView = (() => {
@@ -175,7 +230,11 @@ export function WorkspacePage() {
           />
         );
       case 'templates':
-        return <TemplateLibraryPanel currentPalette={currentPalette} onApplyTemplate={applyTemplate} />;
+        return (
+          <Suspense fallback={<PanelFallback label={t('workspace:browseTemplates')} />}>
+            <TemplateLibraryPanel currentPalette={currentPalette} onApplyTemplate={applyTemplate} />
+          </Suspense>
+        );
       case 'tone-ramp':
         return (
           <SwatchSection
@@ -187,15 +246,40 @@ export function WorkspacePage() {
           />
         );
       case 'scientific-grid':
-        return <ScientificMatrixPanel matrix={matrix} selectedColorId={selectedColorId} onSelect={selectColor} onInsert={(hex) => insertHexes([hex])} />;
+        return (
+          <Suspense fallback={<PanelFallback label={t('workspace:scientificGrid')} />}>
+            <ScientificMatrixPanel
+              matrix={matrix!}
+              selectedColorId={selectedColorId}
+              onSelect={selectColor}
+              onInsert={(hex) => insertHexes([hex])}
+            />
+          </Suspense>
+        );
       case 'gradient':
-        return <GradientEditorPanel gradients={gradients} />;
+        return (
+          <Suspense fallback={<PanelFallback label={t('workspace:gradient')} />}>
+            <GradientEditorPanel gradients={gradients} />
+          </Suspense>
+        );
       case 'pairing':
-        return <PairingRecommendationPanel groups={pairingGroups} onInsertColors={insertHexes} />;
+        return (
+          <Suspense fallback={<PanelFallback label={t('workspace:pairing')} />}>
+            <PairingRecommendationPanel groups={pairingGroups} onInsertColors={insertHexes} />
+          </Suspense>
+        );
       case 'chart-preview':
-        return <FigurePreviewPanel palette={currentPalette} />;
+        return (
+          <Suspense fallback={<PanelFallback label={t('workspace:chartPreview')} />}>
+            <FigurePreviewPanel palette={currentPalette} />
+          </Suspense>
+        );
       case 'accessibility':
-        return <AccessibilityPanel palette={currentPalette} />;
+        return (
+          <Suspense fallback={<PanelFallback label={t('workspace:accessibility')} />}>
+            <AccessibilityPanel palette={currentPalette} />
+          </Suspense>
+        );
       case 'inspector':
       default:
         return <InspectorPanel color={selectedColor} onNameChange={setSelectedColorName} onNotesChange={setSelectedColorNotes} onTagsChange={setSelectedColorTags} />;
@@ -207,7 +291,7 @@ export function WorkspacePage() {
       <SplitPanelLayout
         left={
           <>
-            <RouteNavigationPanel canInstall={canInstall} isInstalled={isInstalled} onInstall={() => void install()} />
+            <RouteNavigationPanel />
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle>{t('workspace:paletteSetup')}</CardTitle>
@@ -243,6 +327,21 @@ export function WorkspacePage() {
         }
         center={
           <>
+            {showWelcome ? (
+              <WelcomeOverlay
+                onAction={(action) => {
+                  void setShowWelcome(false);
+                  if (action === 'extract-image') {
+                    navigate('/analyzer');
+                  } else if (action === 'open-library') {
+                    setActiveView('templates');
+                    setSearchParams({ view: 'templates' });
+                  } else if (action === 'open-recent') {
+                    navigate('/library');
+                  }
+                }}
+              />
+            ) : null}
             <PaletteStrip
               palette={currentPalette}
               selectedColorId={selectedColorId}
@@ -278,9 +377,7 @@ export function WorkspacePage() {
                     >
                       {t('common:exports')}
                     </Button>
-                    <Button onClick={handleSavePalette} disabled={!libraryHydrated || !projectId}>
-                      {t('workspace:savePalette')}
-                    </Button>
+                    <Button onClick={() => void handleSavePalette()}>{t('workspace:savePalette')}</Button>
                   </div>
                 </div>
               </CardHeader>
@@ -304,10 +401,14 @@ export function WorkspacePage() {
         }
         right={
           <>
-            <AdjustmentHistoryPanel />
+            <Suspense fallback={<PanelFallback label={t('common:history')} />}>
+              <AdjustmentHistoryPanel />
+            </Suspense>
             <DiagnosticsPanel
+              summaryOnly
               diagnostics={diagnostics}
-              onQuickFix={(fixId) => {
+              onQuickFix={async (fixId) => {
+                const { applyDiagnosticQuickFix } = await import('@/domain/diagnostics/quick-fixes');
                 const nextPalette = applyDiagnosticQuickFix(currentPalette, fixId);
                 setCurrentPalette(nextPalette);
                 pushToast(t(`diagnostics:fix.${fixId}.label`));
@@ -316,21 +417,6 @@ export function WorkspacePage() {
           </>
         }
       />
-
-      {showWelcome ? (
-        <WelcomeOverlay
-          onAction={(action) => {
-            void setShowWelcome(false);
-            if (action === 'extract-image') {
-              navigate('/analyzer');
-            } else if (action === 'open-library') {
-              navigate('/library');
-            } else if (action === 'open-recent') {
-              navigate('/library');
-            }
-          }}
-        />
-      ) : null}
     </div>
   );
 }

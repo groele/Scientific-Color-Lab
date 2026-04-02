@@ -1,23 +1,6 @@
 import { create } from 'zustand';
-import type { BackgroundMode, CopyFormat } from '@/domain/models';
-import { settingsRepository } from '@/db/repositories';
-
-let persistTimer: number | null = null;
-
-function schedulePreferenceSave(nextPartial: {
-  copyFormat?: CopyFormat;
-  backgroundMode?: BackgroundMode;
-  showWelcome?: boolean;
-  recentProjectId?: string;
-}) {
-  if (persistTimer) {
-    window.clearTimeout(persistTimer);
-  }
-
-  persistTimer = window.setTimeout(() => {
-    void settingsRepository.save(nextPartial);
-  }, 250);
-}
+import type { BackgroundMode, CopyFormat, PersistedSettings, StartupSnapshot } from '@/domain/models';
+import { scheduleSave } from '@/services/settings-runtime';
 
 interface PreferencesState {
   copyFormat: CopyFormat;
@@ -25,7 +8,8 @@ interface PreferencesState {
   showWelcome: boolean;
   recentProjectId?: string;
   hydrated: boolean;
-  hydrate: () => Promise<void>;
+  primeFromSnapshot: (snapshot: StartupSnapshot) => void;
+  applySettings: (settings: PersistedSettings) => void;
   setCopyFormat: (copyFormat: CopyFormat) => Promise<void>;
   setBackgroundMode: (backgroundMode: BackgroundMode) => Promise<void>;
   setShowWelcome: (showWelcome: boolean) => Promise<void>;
@@ -38,8 +22,13 @@ export const usePreferencesStore = create<PreferencesState>((set) => ({
   showWelcome: true,
   recentProjectId: undefined,
   hydrated: false,
-  hydrate: async () => {
-    const settings = await settingsRepository.load();
+  primeFromSnapshot: (snapshot) =>
+    set({
+      copyFormat: snapshot.copyFormat,
+      backgroundMode: snapshot.backgroundMode,
+      showWelcome: snapshot.showWelcome,
+    }),
+  applySettings: (settings) => {
     set({
       copyFormat: settings.copyFormat,
       backgroundMode: settings.backgroundMode,
@@ -50,18 +39,18 @@ export const usePreferencesStore = create<PreferencesState>((set) => ({
   },
   setCopyFormat: async (copyFormat) => {
     set({ copyFormat });
-    schedulePreferenceSave({ copyFormat });
+    scheduleSave({ copyFormat });
   },
   setBackgroundMode: async (backgroundMode) => {
     set({ backgroundMode });
-    schedulePreferenceSave({ backgroundMode });
+    scheduleSave({ backgroundMode });
   },
   setShowWelcome: async (showWelcome) => {
     set({ showWelcome });
-    schedulePreferenceSave({ showWelcome });
+    scheduleSave({ showWelcome });
   },
   setRecentProjectId: async (recentProjectId) => {
     set({ recentProjectId });
-    schedulePreferenceSave({ recentProjectId });
+    scheduleSave({ recentProjectId });
   },
 }));

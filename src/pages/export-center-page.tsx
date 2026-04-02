@@ -13,7 +13,6 @@ import { createId } from '@/domain/color/convert';
 import { buildExportPayload, createExportRecord } from '@/domain/export/service';
 import type { ExportFormat, ExportProfile, ExportScope, LanguageCode, NotesBehavior } from '@/domain/models';
 import { useLibraryHydration } from '@/hooks/use-library-hydration';
-import { usePwaInstall } from '@/hooks/use-pwa-install';
 import { downloadText } from '@/lib/utils';
 import { useLibraryStore } from '@/stores/library-store';
 import { useWorkspaceStore } from '@/stores/workspace-store';
@@ -73,7 +72,6 @@ export function ExportCenterPage() {
   const { t } = useTranslation(['common', 'exports']);
   const { pushToast } = useToast();
   const location = useLocation();
-  const { canInstall, isInstalled, install } = usePwaInstall();
   const libraryHydrated = useLibraryHydration();
   const currentPalette = useWorkspaceStore((state) => state.currentPalette);
   const selectedColor = useWorkspaceStore((state) => state.getSelectedColor());
@@ -253,7 +251,7 @@ export function ExportCenterPage() {
     <SplitPanelLayout
       left={
         <>
-          <RouteNavigationPanel canInstall={canInstall} isInstalled={isInstalled} onInstall={() => void install()} />
+          <RouteNavigationPanel />
           <Card>
             <CardHeader className="pb-3">
               <CardTitle>{t('exports:profiles')}</CardTitle>

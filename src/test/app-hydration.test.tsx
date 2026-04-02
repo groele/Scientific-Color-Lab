@@ -1,11 +1,12 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import type { PersistedSettings } from '@/domain/models';
 import '@/i18n';
 import { App } from '@/app/App';
 
-function createDeferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((resolver) => {
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolver) => {
     resolve = resolver;
   });
 
@@ -22,31 +23,22 @@ function createMockStore<T extends object>(state: T) {
 }
 
 const boot = vi.hoisted(() => {
-  const diagnostics = createDeferred();
-  const preferences = createDeferred();
-  const i18n = createDeferred();
-
+  const deferred = createDeferred<PersistedSettings>();
   const diagnosticsState = {
-    hydrate: vi.fn(() => diagnostics.promise),
+    applySettings: vi.fn(),
   };
-
   const preferencesState = {
-    copyFormat: 'rgb',
-    hydrate: vi.fn(() => preferences.promise),
+    applySettings: vi.fn(),
   };
-
   const i18nState = {
-    hydrate: vi.fn(() => i18n.promise),
+    applySettings: vi.fn(async () => undefined),
   };
-
   const workspaceState = {
     setCopyFormat: vi.fn(),
   };
 
   return {
-    diagnostics,
-    preferences,
-    i18n,
+    deferred,
     diagnosticsState,
     preferencesState,
     i18nState,
@@ -56,6 +48,10 @@ const boot = vi.hoisted(() => {
 
 vi.mock('@/routes/app-routes', () => ({
   AppRoutes: () => <div data-testid="app-routes">Routes ready</div>,
+}));
+
+vi.mock('@/services/settings-runtime', () => ({
+  loadFullSettings: vi.fn(() => boot.deferred.promise),
 }));
 
 vi.mock('@/stores/diagnostics-store', () => ({
@@ -75,20 +71,30 @@ vi.mock('@/stores/workspace-store', () => ({
 }));
 
 describe('App boot hydration', () => {
-  it('keeps the boot screen visible until hydration settles and then syncs preferences', async () => {
+  it('renders routes immediately and applies restored settings after background restore settles', async () => {
     render(<App />);
 
-    expect(screen.getByTestId('app-hydration')).toBeInTheDocument();
-    expect(screen.queryByTestId('app-routes')).not.toBeInTheDocument();
-
-    boot.preferencesState.copyFormat = 'oklch';
-    boot.diagnostics.resolve();
-    boot.preferences.resolve();
-    boot.i18n.resolve();
-
-    await screen.findByTestId('app-routes');
-
+    expect(screen.getByTestId('app-routes')).toBeInTheDocument();
     expect(screen.queryByTestId('app-hydration')).not.toBeInTheDocument();
-    expect(boot.workspaceState.setCopyFormat).toHaveBeenCalledWith('oklch');
+
+    boot.deferred.resolve({
+      language: 'en',
+      copyFormat: 'oklch',
+      thresholds: {
+        categoricalDeltaE: 10,
+        minimumContrast: 3,
+        maxQualitativeColors: 7,
+        maximumChroma: 0.22,
+      },
+      backgroundMode: 'light',
+      showWelcome: true,
+    });
+
+    await waitFor(() => {
+      expect(boot.preferencesState.applySettings).toHaveBeenCalled();
+      expect(boot.diagnosticsState.applySettings).toHaveBeenCalled();
+      expect(boot.i18nState.applySettings).toHaveBeenCalled();
+      expect(boot.workspaceState.setCopyFormat).toHaveBeenCalledWith('oklch');
+    });
   });
 });

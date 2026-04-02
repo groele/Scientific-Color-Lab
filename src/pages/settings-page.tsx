@@ -4,7 +4,6 @@ import { Select } from '@/components/ui/select';
 import { SplitPanelLayout } from '@/components/ui/split-panel-layout';
 import { RouteNavigationPanel } from '@/app/route-navigation-panel';
 import { LanguageSwitcher } from '@/components/ui/language-switcher';
-import { usePwaInstall } from '@/hooks/use-pwa-install';
 import { SliderNumberField } from '@/components/ui/slider-number-field';
 import { useDiagnosticsStore } from '@/stores/diagnostics-store';
 import { useI18nStore } from '@/stores/i18n-store';
@@ -12,7 +11,6 @@ import { usePreferencesStore } from '@/stores/preferences-store';
 
 export function SettingsPage() {
   const { t } = useTranslation(['common', 'settings']);
-  const { canInstall, isInstalled, install } = usePwaInstall();
   const language = useI18nStore((state) => state.language);
   const copyFormat = usePreferencesStore((state) => state.copyFormat);
   const setCopyFormat = usePreferencesStore((state) => state.setCopyFormat);
@@ -25,7 +23,7 @@ export function SettingsPage() {
 
   return (
     <SplitPanelLayout
-      left={<RouteNavigationPanel canInstall={canInstall} isInstalled={isInstalled} onInstall={() => void install()} />}
+      left={<RouteNavigationPanel />}
       center={
         <>
           <Card>

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { AppBootstrapState } from '@/domain/models';
 import { GlobalErrorBoundary } from '@/app/global-error-boundary';
 import { ToastProvider } from '@/components/ui/toast-provider';
 import { AppRoutes } from '@/routes/app-routes';
@@ -7,57 +8,102 @@ import { useDiagnosticsStore } from '@/stores/diagnostics-store';
 import { useI18nStore } from '@/stores/i18n-store';
 import { usePreferencesStore } from '@/stores/preferences-store';
 import { useWorkspaceStore } from '@/stores/workspace-store';
+import { loadFullSettings } from '@/services/settings-runtime';
+import { getStorageStatus } from '@/services/storage-status';
 
 export function App() {
   const { t } = useTranslation(['common']);
-  const hydrateDiagnostics = useDiagnosticsStore((state) => state.hydrate);
-  const hydratePreferences = usePreferencesStore((state) => state.hydrate);
-  const hydrateI18n = useI18nStore((state) => state.hydrate);
+  const applyDiagnosticsSettings = useDiagnosticsStore((state) => state.applySettings);
+  const applyPreferencesSettings = usePreferencesStore((state) => state.applySettings);
+  const applyI18nSettings = useI18nStore((state) => state.applySettings);
   const setCopyFormat = useWorkspaceStore((state) => state.setCopyFormat);
-  const [bootstrapped, setBootstrapped] = useState(false);
-  const [bootstrapIssues, setBootstrapIssues] = useState<string[]>([]);
-  const [bootstrapFailed, setBootstrapFailed] = useState(false);
+  const initializedRef = useRef(false);
+  const [bootstrapState, setBootstrapState] = useState<AppBootstrapState>({
+    phase: 'shell-ready',
+    issues: [],
+    restoredFrom: 'snapshot',
+    storageMode: getStorageStatus().degraded ? 'memory' : 'persistent',
+  });
 
   useEffect(() => {
+    if (initializedRef.current) {
+      return;
+    }
+    initializedRef.current = true;
+
     let active = true;
-
-    const bootstrap = async () => {
-      const results = await Promise.allSettled([hydrateDiagnostics(), hydratePreferences(), hydrateI18n()]);
-      if (!active) {
+    let restoreCompleted = false;
+    const restoringTimer = window.setTimeout(() => {
+      if (!active || restoreCompleted) {
         return;
       }
 
-      const issues = results
-        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
-        .map((result) => (result.reason instanceof Error ? result.reason.message : 'Bootstrap failed.'));
-
-      setBootstrapIssues(issues);
-      setCopyFormat(usePreferencesStore.getState().copyFormat);
-      setBootstrapped(true);
-    };
-
-    void bootstrap().catch((error) => {
-      if (!active) {
+      setBootstrapState((current) => (current.phase === 'shell-ready' ? { ...current, phase: 'restoring' } : current));
+    }, 250);
+    const degradeTimer = window.setTimeout(() => {
+      if (!active || restoreCompleted) {
         return;
       }
 
-      setBootstrapIssues([error instanceof Error ? error.message : 'Bootstrap failed.']);
-      setBootstrapFailed(true);
-    });
+      setBootstrapState((current) => ({
+        ...current,
+        phase: 'degraded',
+        issues: current.issues.includes('restore-timeout') ? current.issues : [...current.issues, 'restore-timeout'],
+      }));
+    }, 4000);
+
+    performance.mark('app-shell-visible');
+
+    void (async () => {
+      try {
+        const settings = await loadFullSettings();
+        if (!active) {
+          return;
+        }
+
+        applyPreferencesSettings(settings);
+        applyDiagnosticsSettings(settings);
+        await applyI18nSettings(settings);
+        setCopyFormat(settings.copyFormat);
+        restoreCompleted = true;
+        performance.mark('full-restore-complete');
+        performance.measure('app-full-restore', 'app-shell-visible', 'full-restore-complete');
+        setBootstrapState({
+          phase: 'ready',
+          issues: [],
+          restoredFrom: 'dexie',
+          storageMode: getStorageStatus().degraded ? 'memory' : 'persistent',
+        });
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+
+        restoreCompleted = true;
+        setBootstrapState({
+          phase: 'degraded',
+          issues: [error instanceof Error ? error.message : 'Background restore failed.'],
+          restoredFrom: 'memory',
+          storageMode: 'memory',
+        });
+      }
+    })();
 
     return () => {
       active = false;
+      window.clearTimeout(restoringTimer);
+      window.clearTimeout(degradeTimer);
     };
-  }, [hydrateDiagnostics, hydrateI18n, hydratePreferences, setCopyFormat]);
+  }, [applyDiagnosticsSettings, applyI18nSettings, applyPreferencesSettings, setCopyFormat]);
 
-  if (bootstrapFailed) {
+  if (bootstrapState.phase === 'failed') {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
         <div className="w-full max-w-xl rounded-[1.75rem] border border-border/70 bg-panel px-6 py-6 shadow-panel">
           <div className="eyebrow">{t('common:shellBadge')}</div>
           <div className="mt-3 font-editorial text-2xl tracking-tight text-foreground">{t('common:unavailableTemporarily')}</div>
           <p className="mt-2 text-sm text-foreground/68">
-            {bootstrapIssues[0] ?? t('common:storageUnavailable')}
+            {bootstrapState.issues[0] ?? t('common:storageUnavailable')}
           </p>
           <div className="mt-5 flex gap-3">
             <button
@@ -73,22 +119,10 @@ export function App() {
     );
   }
 
-  if (!bootstrapped) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background px-4" data-testid="app-hydration">
-        <div className="w-full max-w-md rounded-[1.75rem] border border-border/70 bg-panel px-6 py-5 text-center shadow-panel">
-          <div className="eyebrow">{t('common:shellBadge')}</div>
-          <div className="mt-3 font-editorial text-2xl tracking-tight text-foreground">{t('common:loadingWorkspace')}</div>
-          <p className="mt-2 text-sm text-foreground/65">{t('common:shellSubtitle')}</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <ToastProvider>
       <GlobalErrorBoundary title={t('common:unavailableTemporarily')} body={t('common:storageUnavailable')} retryLabel={t('common:retry')}>
-        <AppRoutes bootstrapIssues={bootstrapIssues} />
+        <AppRoutes bootstrapState={bootstrapState} />
       </GlobalErrorBoundary>
     </ToastProvider>
   );

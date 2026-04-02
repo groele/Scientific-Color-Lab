@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BrowserRouter, HashRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { AppShell } from '@/app/app-shell';
+import type { AppBootstrapState } from '@/domain/models';
 
 const WorkspacePage = lazy(() => import('@/pages/workspace-page').then((module) => ({ default: module.WorkspacePage })));
 const LibraryPage = lazy(() => import('@/pages/library-page').then((module) => ({ default: module.LibraryPage })));
@@ -12,26 +13,26 @@ const NotFoundPage = lazy(() => import('@/pages/not-found-page').then((module) =
 const routerBase = import.meta.env.BASE_URL.replace(/\/+$/, '') || '/';
 const useHashRouter = import.meta.env.BASE_URL !== '/';
 
-function Layout({ bootstrapIssues = [] }: { bootstrapIssues?: string[] }) {
+function Layout({ bootstrapState }: { bootstrapState: AppBootstrapState }) {
   const { t } = useTranslation(['common']);
 
   return (
-    <AppShell bootstrapIssues={bootstrapIssues}>
-      <Suspense fallback={<div className="rounded-2xl border border-border/80 bg-panel p-6 text-sm text-foreground/65">{t('common:loadingWorkspace')}</div>}>
+    <AppShell bootstrapState={bootstrapState}>
+      <Suspense fallback={<div className="rounded-2xl border border-border/80 bg-panel p-4 text-sm text-foreground/65">{t('common:loadingWorkspace')}</div>}>
         <Outlet />
       </Suspense>
     </AppShell>
   );
 }
 
-export function AppRoutes({ bootstrapIssues = [] }: { bootstrapIssues?: string[] }) {
+export function AppRoutes({ bootstrapState }: { bootstrapState: AppBootstrapState }) {
   const Router = useHashRouter ? HashRouter : BrowserRouter;
   const routerProps = useHashRouter ? {} : { basename: routerBase };
 
   return (
     <Router {...routerProps}>
       <Routes>
-        <Route element={<Layout bootstrapIssues={bootstrapIssues} />}>
+        <Route element={<Layout bootstrapState={bootstrapState} />}>
           <Route index element={<Navigate to="/workspace" replace />} />
           <Route path="/workspace" element={<WorkspacePage />} />
           <Route path="/library" element={<LibraryPage />} />

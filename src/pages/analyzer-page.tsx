@@ -20,8 +20,6 @@ import { DiagnosticsPanel } from '@/components/workspace/diagnostics-panel';
 import { paletteFromColors } from '@/domain/color/palette';
 import { buildPaletteDiagnostics } from '@/domain/diagnostics/engine';
 import type { ColorToken, DiagnosticItem, ImageAnalysisResult, ImageCluster, Palette } from '@/domain/models';
-import { useLibraryHydration } from '@/hooks/use-library-hydration';
-import { usePwaInstall } from '@/hooks/use-pwa-install';
 import { useAnalyzerStore } from '@/stores/analyzer-store';
 import { useLibraryStore } from '@/stores/library-store';
 import { useWorkspaceStore } from '@/stores/workspace-store';
@@ -126,7 +124,6 @@ function deriveAnalyzerDiagnostics(result: ImageAnalysisResult, clusterLayer: 's
 export function AnalyzerPage() {
   const { t } = useTranslation(['common', 'analyzer']);
   const navigate = useNavigate();
-  const { canInstall, isInstalled, install } = usePwaInstall();
   const previewUrl = useAnalyzerStore((state) => state.previewUrl);
   const result = useAnalyzerStore((state) => state.result);
   const isAnalyzing = useAnalyzerStore((state) => state.isAnalyzing);
@@ -148,8 +145,6 @@ export function AnalyzerPage() {
   const clear = useAnalyzerStore((state) => state.clear);
   const setCurrentPalette = useWorkspaceStore((state) => state.setCurrentPalette);
   const remember = useLibraryStore((state) => state.remember);
-
-  useLibraryHydration();
 
   const [paletteMode, setPaletteMode] = useState<'raw' | 'scientific'>('scientific');
 
@@ -217,7 +212,7 @@ export function AnalyzerPage() {
 
   return (
     <SplitPanelLayout
-      left={<RouteNavigationPanel canInstall={canInstall} isInstalled={isInstalled} onInstall={() => void install()} />}
+      left={<RouteNavigationPanel />}
       center={
         <>
           <ImageDropzone

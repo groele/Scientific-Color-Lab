@@ -1,18 +1,10 @@
 import { Download, FlaskConical, FolderArchive, ImageDown, Settings2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { NavLink } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { LanguageSwitcher } from '@/components/ui/language-switcher';
 
-interface RouteNavigationPanelProps {
-  onInstall?: () => void;
-  canInstall?: boolean;
-  isInstalled?: boolean;
-}
-
-export function RouteNavigationPanel({ onInstall, canInstall = false, isInstalled = false }: RouteNavigationPanelProps) {
-  const { t } = useTranslation(['common', 'workspace']);
+export function RouteNavigationPanel() {
+  const { t } = useTranslation(['common']);
   const items = [
     { to: '/workspace', label: t('common:workspace'), icon: FlaskConical },
     { to: '/library', label: t('common:library'), icon: FolderArchive },
@@ -26,7 +18,7 @@ export function RouteNavigationPanel({ onInstall, canInstall = false, isInstalle
       <CardHeader className="pb-3">
         <CardTitle>{t('common:navigation')}</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent>
         <div className="space-y-2">
           {items.map((item) => {
             const Icon = item.icon;
@@ -45,27 +37,6 @@ export function RouteNavigationPanel({ onInstall, canInstall = false, isInstalle
               </NavLink>
             );
           })}
-        </div>
-
-        <div className="rounded-2xl border border-border/80 bg-muted/35 p-3">
-          <div className="mb-3">
-            <div className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/45">{t('common:settings')}</div>
-            <div className="mt-1 text-sm text-foreground/65">{t('common:navHint')}</div>
-          </div>
-          <div className="space-y-3">
-            <LanguageSwitcher />
-            <Button className="w-full" variant="outline" onClick={onInstall} disabled={!canInstall || isInstalled}>
-              {isInstalled ? t('common:installed') : t('common:installPwa')}
-            </Button>
-            <div className="text-xs text-foreground/55">
-              {isInstalled ? t('common:installHint') : canInstall ? t('common:installHint') : t('common:installUnavailable')}
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-border/80 bg-panel p-3">
-          <div className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/45">{t('common:recent')}</div>
-          <div className="mt-2 text-sm text-foreground/60">{t('common:recentProjectHint')}</div>
         </div>
       </CardContent>
     </Card>

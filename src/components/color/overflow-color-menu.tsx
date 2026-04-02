@@ -1,3 +1,4 @@
+import * as Popover from '@radix-ui/react-popover';
 import { MoreHorizontal, Plus, Star } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -17,23 +18,30 @@ export function OverflowColorMenu({ color, onInsert }: OverflowColorMenuProps) {
   const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   return (
-    <div className="relative">
-      <Button
-        ref={triggerRef}
-        size="sm"
-        variant="ghost"
-        className="h-8 w-8 rounded-full p-0"
-        onClick={(event) => {
-          event.stopPropagation();
-          setOpen((current) => !current);
-        }}
-      >
-        <MoreHorizontal className="h-4 w-4" />
-      </Button>
-      {open ? (
-        <div
-          className="absolute right-0 top-9 z-20 min-w-[180px] rounded-xl border border-border bg-panel p-1 shadow-panel"
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger asChild>
+        <Button
+          ref={triggerRef}
+          size="sm"
+          variant="ghost"
+          className="h-8 w-8 rounded-full p-0"
+          aria-label="Open color menu"
+          onClick={(event) => {
+            event.stopPropagation();
+          }}
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          side="bottom"
+          align="end"
+          sideOffset={8}
+          collisionPadding={12}
+          className="z-50 min-w-[180px] rounded-xl border border-border bg-panel p-1 shadow-panel"
           onClick={(event) => event.stopPropagation()}
+          onOpenAutoFocus={(event) => event.preventDefault()}
         >
           {formats.map((format) => (
             <button
@@ -41,6 +49,7 @@ export function OverflowColorMenu({ color, onInsert }: OverflowColorMenuProps) {
               type="button"
               className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm text-foreground/80 transition hover:bg-muted"
               onClick={(event) => {
+                event.stopPropagation();
                 void copyByFormat(color, format, event.currentTarget);
                 setOpen(false);
               }}
@@ -51,7 +60,8 @@ export function OverflowColorMenu({ color, onInsert }: OverflowColorMenuProps) {
           <button
             type="button"
             className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-foreground/80 transition hover:bg-muted"
-            onClick={() => {
+            onClick={(event) => {
+              event.stopPropagation();
               void favoriteColor(color);
               setOpen(false);
             }}
@@ -63,7 +73,8 @@ export function OverflowColorMenu({ color, onInsert }: OverflowColorMenuProps) {
             <button
               type="button"
               className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-foreground/80 transition hover:bg-muted"
-              onClick={() => {
+              onClick={(event) => {
+                event.stopPropagation();
                 onInsert();
                 triggerRef.current?.focus();
                 setOpen(false);
@@ -73,8 +84,8 @@ export function OverflowColorMenu({ color, onInsert }: OverflowColorMenuProps) {
               Add to palette
             </button>
           ) : null}
-        </div>
-      ) : null}
-    </div>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }

@@ -72,7 +72,7 @@ export function ExportCenterPage() {
   const { t } = useTranslation(['common', 'exports']);
   const { pushToast } = useToast();
   const location = useLocation();
-  const libraryHydrated = useLibraryHydration();
+  const libraryHydrated = useLibraryHydration('core');
   const currentPalette = useWorkspaceStore((state) => state.currentPalette);
   const selectedColor = useWorkspaceStore((state) => state.getSelectedColor());
   const palettes = useLibraryStore((state) => state.palettes);

@@ -21,7 +21,6 @@ import { paletteFromColors } from '@/domain/color/palette';
 import { buildPaletteDiagnostics } from '@/domain/diagnostics/engine';
 import type { ColorToken, DiagnosticItem, ImageAnalysisResult, ImageCluster, Palette } from '@/domain/models';
 import { useAnalyzerStore } from '@/stores/analyzer-store';
-import { useLibraryStore } from '@/stores/library-store';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 
 async function rasterizeSvgSample(blob: Blob) {
@@ -144,7 +143,6 @@ export function AnalyzerPage() {
   const setError = useAnalyzerStore((state) => state.setError);
   const clear = useAnalyzerStore((state) => state.clear);
   const setCurrentPalette = useWorkspaceStore((state) => state.setCurrentPalette);
-  const remember = useLibraryStore((state) => state.remember);
 
   const [paletteMode, setPaletteMode] = useState<'raw' | 'scientific'>('scientific');
 
@@ -176,7 +174,7 @@ export function AnalyzerPage() {
           ? t('analyzer:workerFailure')
           : error;
   const noticeMessage =
-    notice === 'queued' ? t('analyzer:statusQueued') : notice === 'updated' ? t('analyzer:statusUpdated') : null;
+    notice === 'queued' ? t('analyzer:statusQueued') : notice === 'updated' ? t('analyzer:statusUpdated') : notice === 'replaced' ? t('analyzer:statusStale') : null;
 
   useEffect(() => {
     const handlePaste = (event: ClipboardEvent) => {
@@ -255,7 +253,7 @@ export function AnalyzerPage() {
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{noticeMessage}</div>
           ) : null}
 
-          {analysisStatus === 'analyzing' && noticeMessage ? (
+          {(analysisStatus === 'loading-image' || analysisStatus === 'analyzing' || analysisStatus === 'replaced') && noticeMessage ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">{noticeMessage}</div>
           ) : null}
 
@@ -388,13 +386,14 @@ export function AnalyzerPage() {
                 </div>
                 <Button
                   className="w-full"
-                  onClick={() => {
+                  onClick={async () => {
                     if (!result || !activePalette) {
                       return;
                     }
 
                     setCurrentPalette(activePalette);
-                    void remember('analyzer', result.imageId, activePalette.name, '/analyzer');
+                    const { useLibraryStore } = await import('@/stores/library-store');
+                    await useLibraryStore.getState().remember('analyzer', result.imageId, activePalette.name, '/analyzer');
                     navigate('/workspace');
                   }}
                 >

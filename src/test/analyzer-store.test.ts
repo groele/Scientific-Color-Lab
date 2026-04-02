@@ -17,6 +17,7 @@ const analyzerMocks = vi.hoisted(() => {
   return {
     loadImagePixels: vi.fn(),
     analyzePixelsWithWorker: vi.fn(),
+    resetImageAnalysisWorker: vi.fn(),
     ImageAnalysisClientError: MockImageAnalysisClientError,
   };
 });

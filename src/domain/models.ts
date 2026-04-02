@@ -423,6 +423,7 @@ export interface StartupSnapshot {
   copyFormat: CopyFormat;
   showWelcome: boolean;
   lastWorkspaceRoute?: string;
+  activeView?: WorkspaceView;
   updatedAt: string;
 }
 

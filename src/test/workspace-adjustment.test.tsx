@@ -1,7 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import '@/i18n';
 import { AdjustmentHistoryPanel } from '@/components/workspace/adjustment-history-panel';
+import { HighFrequencyAdjustmentPanel } from '@/components/workspace/high-frequency-adjustment-panel';
+import { ToastProvider } from '@/components/ui/toast-provider';
 import { shortestHueDelta } from '@/domain/color/adjustment';
 import { scientificColorFromOklch, normalizeHue } from '@/domain/color/convert';
 import { paletteFromColors } from '@/domain/color/palette';
@@ -125,6 +127,42 @@ describe('workspace palette-wide adjustment', () => {
     expect(snapshotPalette()).toEqual(after);
   });
 
+  it('increments adjustmentContextVersion on context changes but not on live adjustment updates', () => {
+    const store = useWorkspaceStore.getState();
+    const baseVersion = store.adjustmentContextVersion;
+    const selected = store.getSelectedColor();
+    const nextColorId = store.currentPalette.colors[1]!.id;
+
+    store.updateAdjustment({
+      ...store.adjustment,
+      lightness: selected.oklch.l + 0.02,
+    });
+    expect(useWorkspaceStore.getState().adjustmentContextVersion).toBe(baseVersion);
+
+    useWorkspaceStore.getState().selectColor(nextColorId);
+    expect(useWorkspaceStore.getState().adjustmentContextVersion).toBe(baseVersion + 1);
+
+    useWorkspaceStore.getState().setMainColor(nextColorId);
+    expect(useWorkspaceStore.getState().adjustmentContextVersion).toBe(baseVersion + 2);
+
+    useWorkspaceStore.getState().setCurrentPalette(buildPalette());
+    expect(useWorkspaceStore.getState().adjustmentContextVersion).toBe(baseVersion + 3);
+
+    useWorkspaceStore.getState().applyTemplatePalette(buildPalette());
+    expect(useWorkspaceStore.getState().adjustmentContextVersion).toBe(baseVersion + 4);
+
+    const redoSource = useWorkspaceStore.getState();
+    const redoSelected = redoSource.getSelectedColor();
+    redoSource.updateAdjustment({
+      ...redoSource.adjustment,
+      alpha: redoSelected.alpha - 0.05,
+    });
+    useWorkspaceStore.getState().undo();
+    expect(useWorkspaceStore.getState().adjustmentContextVersion).toBe(baseVersion + 5);
+    useWorkspaceStore.getState().redo();
+    expect(useWorkspaceStore.getState().adjustmentContextVersion).toBe(baseVersion + 6);
+  });
+
   it('renders the history panel as a palette-wide adjustment entry', () => {
     const store = useWorkspaceStore.getState();
     const selected = store.getSelectedColor();
@@ -139,5 +177,55 @@ describe('workspace palette-wide adjustment', () => {
     expect(screen.getByText(/Palette-wide adjustment/i)).toBeInTheDocument();
     expect(screen.getByText(new RegExp(selected.name))).toBeInTheDocument();
     expect(screen.getByText(/dH/i)).toBeInTheDocument();
+  });
+
+  it('keeps previous fixed during a gesture and refreshes it for the next gesture', () => {
+    const { container } = render(
+      <ToastProvider>
+        <HighFrequencyAdjustmentPanel />
+      </ToastProvider>,
+    );
+    const slider = container.querySelector('input[type="range"]') as HTMLInputElement;
+    const firstState = useWorkspaceStore.getState();
+    const firstHex = firstState.getSelectedColor().hex;
+
+    fireEvent.change(slider, { target: { value: String(firstState.adjustment.hue + 18) } });
+    const secondHex = useWorkspaceStore.getState().getSelectedColor().hex;
+    expect(secondHex).not.toBe(firstHex);
+    expect(screen.getAllByText(firstHex)).toHaveLength(1);
+    expect(screen.getAllByText(secondHex)).toHaveLength(1);
+
+    fireEvent.change(slider, { target: { value: String(useWorkspaceStore.getState().adjustment.hue + 18) } });
+    const thirdHex = useWorkspaceStore.getState().getSelectedColor().hex;
+    expect(screen.getAllByText(firstHex)).toHaveLength(1);
+    expect(screen.getAllByText(thirdHex)).toHaveLength(1);
+
+    fireEvent.mouseUp(slider);
+    fireEvent.change(slider, { target: { value: String(useWorkspaceStore.getState().adjustment.hue + 18) } });
+    const fourthHex = useWorkspaceStore.getState().getSelectedColor().hex;
+    expect(screen.queryByText(firstHex)).not.toBeInTheDocument();
+    expect(screen.getAllByText(thirdHex)).toHaveLength(1);
+    expect(screen.getAllByText(fourthHex)).toHaveLength(1);
+  });
+
+  it('treats each nudge click as a new comparison gesture', () => {
+    const { container } = render(
+      <ToastProvider>
+        <HighFrequencyAdjustmentPanel />
+      </ToastProvider>,
+    );
+    const plusButton = container.querySelector('svg.lucide-plus')?.closest('button') as HTMLButtonElement;
+    const firstHex = useWorkspaceStore.getState().getSelectedColor().hex;
+
+    fireEvent.click(plusButton);
+    const secondHex = useWorkspaceStore.getState().getSelectedColor().hex;
+    expect(screen.getAllByText(firstHex)).toHaveLength(1);
+    expect(screen.getAllByText(secondHex)).toHaveLength(1);
+
+    fireEvent.click(plusButton);
+    const thirdHex = useWorkspaceStore.getState().getSelectedColor().hex;
+    expect(screen.queryByText(firstHex)).not.toBeInTheDocument();
+    expect(screen.getAllByText(secondHex)).toHaveLength(1);
+    expect(screen.getAllByText(thirdHex)).toHaveLength(1);
   });
 });

@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react';
+import * as Popover from '@radix-ui/react-popover';
+import { MoreHorizontal } from 'lucide-react';
+import { Suspense, lazy, memo, useEffect, useRef, useState } from 'react';
 import type { ColorToken } from '@/domain/models';
 import { cn } from '@/lib/utils';
 import { useColorActions } from '@/hooks/use-color-actions';
-import { OverflowColorMenu } from '@/components/color/overflow-color-menu';
 
 interface ColorSwatchButtonProps {
   color: ColorToken;
@@ -13,7 +14,11 @@ interface ColorSwatchButtonProps {
   onInsert?: () => void;
 }
 
-export function ColorSwatchButton({
+const OverflowColorMenu = lazy(() =>
+  import('@/components/color/overflow-color-menu').then((module) => ({ default: module.OverflowColorMenu })),
+);
+
+export const ColorSwatchButton = memo(function ColorSwatchButton({
   color,
   selected = false,
   compact = false,
@@ -23,6 +28,8 @@ export function ColorSwatchButton({
 }: ColorSwatchButtonProps) {
   const { handleSwatchClick, handleSwatchDoubleClick } = useColorActions();
   const clickTimeoutRef = useRef<number | null>(null);
+  const [menuLoaded, setMenuLoaded] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -36,13 +43,13 @@ export function ColorSwatchButton({
     <div
       title={`${color.name}\n${color.hex}\nRGB ${color.rgb.r}, ${color.rgb.g}, ${color.rgb.b}\nOKLCH ${color.oklch.l} / ${color.oklch.c} / ${color.oklch.h}`}
       className={cn(
-        'group relative overflow-hidden rounded-2xl border text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+        'group relative overflow-visible rounded-2xl border text-left transition focus-within:z-20 focus-visible:outline-none',
         selected ? 'border-foreground shadow-panel' : 'border-border/80 hover:border-foreground/35 hover:shadow-panel',
       )}
     >
       <button
         type="button"
-        className="w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className="w-full overflow-hidden rounded-[inherit] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         onClick={(event) => {
           const anchor = event.currentTarget;
           const shiftKey = event.shiftKey;
@@ -72,9 +79,44 @@ export function ColorSwatchButton({
           </div>
         </div>
       </button>
-      <div className="absolute right-3 top-3 opacity-100 lg:opacity-0 lg:transition group-hover:lg:opacity-100">
-        <OverflowColorMenu color={color} onInsert={onInsert} />
+      <div className="absolute right-3 top-3 z-10 opacity-100 lg:opacity-0 lg:transition group-hover:lg:opacity-100 group-focus-within:opacity-100">
+        <Popover.Root open={menuOpen} onOpenChange={setMenuOpen}>
+          <Popover.Trigger asChild>
+            <button
+              type="button"
+              aria-label="Open color menu"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-panel/85 text-foreground/70 shadow-sm transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              onPointerEnter={() => setMenuLoaded(true)}
+              onFocus={() => setMenuLoaded(true)}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+                setMenuLoaded(true);
+              }}
+              onClick={(event) => {
+                event.stopPropagation();
+                setMenuLoaded(true);
+              }}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+          </Popover.Trigger>
+          <Popover.Portal>
+            <Popover.Content
+              side="bottom"
+              align="end"
+              sideOffset={8}
+              collisionPadding={12}
+              className="z-[120] min-w-[220px] rounded-xl border border-border bg-panel p-1 text-foreground shadow-panel"
+              onClick={(event) => event.stopPropagation()}
+              onOpenAutoFocus={(event) => event.preventDefault()}
+            >
+              <Suspense fallback={<div className="px-3 py-2 text-sm text-foreground/65">Loading menu...</div>}>
+                {menuLoaded ? <OverflowColorMenu color={color} onInsert={onInsert} onRequestClose={() => setMenuOpen(false)} /> : null}
+              </Suspense>
+            </Popover.Content>
+          </Popover.Portal>
+        </Popover.Root>
       </div>
     </div>
   );
-}
+});

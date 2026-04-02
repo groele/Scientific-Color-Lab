@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { AnalyzerClusterLayer, AnalyzerOptions, ImageAnalysisResult } from '@/domain/models';
-import { analyzePixelsWithWorker, ImageAnalysisClientError, loadImagePixels } from '@/lib/image-worker-client';
+import { analyzePixelsWithWorker, ImageAnalysisClientError, loadImagePixels, resetImageAnalysisWorker } from '@/lib/image-worker-client';
 
 const defaultOptions: AnalyzerOptions = {
   detailLevel: 'balanced',
@@ -13,8 +13,9 @@ interface AnalyzerState {
   sourceFile: File | null;
   isAnalyzing: boolean;
   activeRequestId: string | null;
-  analysisStatus: 'idle' | 'analyzing' | 'updated' | 'error';
-  notice: 'queued' | 'updated' | null;
+  analysisStatus: 'idle' | 'loading-image' | 'analyzing' | 'updated' | 'replaced' | 'error';
+  notice: 'queued' | 'updated' | 'replaced' | null;
+  cancelReason: string | null;
   error: string | null;
   errorCode: ImageAnalysisClientError['code'] | null;
   options: AnalyzerOptions;
@@ -53,6 +54,7 @@ export const useAnalyzerStore = create<AnalyzerState>((set, get) => ({
   activeRequestId: null,
   analysisStatus: 'idle',
   notice: null,
+  cancelReason: null,
   error: null,
   errorCode: null,
   options: defaultOptions,
@@ -62,6 +64,9 @@ export const useAnalyzerStore = create<AnalyzerState>((set, get) => ({
   analyzeFile: async (file, preservePreview = false) => {
     const current = get();
     const requestId = crypto.randomUUID();
+    if (current.activeRequestId) {
+      resetImageAnalysisWorker();
+    }
     if (!preservePreview) {
       clearPreviewUrl(current.previewUrl);
     }
@@ -69,8 +74,9 @@ export const useAnalyzerStore = create<AnalyzerState>((set, get) => ({
     set({
       isAnalyzing: true,
       activeRequestId: requestId,
-      analysisStatus: 'analyzing',
-      notice: current.isAnalyzing ? 'queued' : null,
+      analysisStatus: 'loading-image',
+      notice: current.activeRequestId ? 'replaced' : current.isAnalyzing ? 'queued' : null,
+      cancelReason: current.activeRequestId ? 'replaced-by-new-request' : null,
       error: null,
       errorCode: null,
       sourceFile: file,
@@ -85,6 +91,7 @@ export const useAnalyzerStore = create<AnalyzerState>((set, get) => ({
       if (get().activeRequestId !== requestId) {
         return;
       }
+      set({ analysisStatus: 'analyzing' });
       const result = await analyzePixelsWithWorker({
         requestId,
         imageId: crypto.randomUUID(),
@@ -106,6 +113,7 @@ export const useAnalyzerStore = create<AnalyzerState>((set, get) => ({
         activeRequestId: null,
         analysisStatus: 'updated',
         notice: 'updated',
+        cancelReason: null,
         selectedClusterId: layerClusters[0]?.id ?? null,
         selectedSuggestedColorId: result.suggestedPalette.colors[0]?.id ?? null,
       });
@@ -125,6 +133,7 @@ export const useAnalyzerStore = create<AnalyzerState>((set, get) => ({
         activeRequestId: null,
         analysisStatus: 'error',
         notice: null,
+        cancelReason: null,
         result: null,
         selectedClusterId: null,
         selectedSuggestedColorId: null,
@@ -166,6 +175,9 @@ export const useAnalyzerStore = create<AnalyzerState>((set, get) => ({
     }),
   setError: (error) => set({ error, errorCode: null, analysisStatus: error ? 'error' : 'idle' }),
   clear: () => {
+    if (get().activeRequestId) {
+      resetImageAnalysisWorker();
+    }
     clearPreviewUrl(get().previewUrl);
     set({
       result: null,
@@ -177,6 +189,7 @@ export const useAnalyzerStore = create<AnalyzerState>((set, get) => ({
       activeRequestId: null,
       analysisStatus: 'idle',
       notice: null,
+      cancelReason: null,
       selectedClusterId: null,
       selectedSuggestedColorId: null,
       clusterLayer: 'summary',

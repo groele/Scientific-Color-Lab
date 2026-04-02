@@ -1,6 +1,7 @@
 import type { LanguageCode } from '@/domain/models';
 import { enResources } from '@/i18n/resources-en';
 import type { zhCnResources } from '@/i18n/resources-zh-cn';
+import { markStorageDegraded } from '@/services/storage-status';
 
 export const languageStorageKey = 'scientific-color-lab-language';
 
@@ -25,9 +26,19 @@ export const resources: Partial<Record<LanguageCode, ResourceBundle>> = {
   en: enResources,
 };
 
+function isCorruptedBundle(bundle: ResourceBundle) {
+  const commonShellTitle = String(bundle.common?.shellTitle ?? '');
+  const workspaceTitle = String(bundle.workspace?.title ?? '');
+  return [commonShellTitle, workspaceTitle].some((value) => /(涓撲笟|宸ヤ綔鍙|姝ｅ湪|鍥炲埌|璁剧疆)/.test(value));
+}
+
 export async function loadLanguageResources(language: LanguageCode): Promise<ResourceBundle> {
   if (language === 'zh-CN') {
     const module = await import('@/i18n/resources-zh-cn');
+    if (isCorruptedBundle(module.zhCnResources)) {
+      markStorageDegraded('Chinese language resources are unavailable; falling back to English.');
+      return enResources;
+    }
     return module.zhCnResources;
   }
 

@@ -59,7 +59,7 @@ describe('ColorSwatchButton overflow menu', () => {
 
     await user.click(screen.getByRole('button', { name: /open color menu/i }));
 
-    expect(screen.getByText('Copy RGB')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Copy RGB')).toBeInTheDocument());
     expect(onSelect).not.toHaveBeenCalled();
   });
 
@@ -73,6 +73,7 @@ describe('ColorSwatchButton overflow menu', () => {
     );
 
     await user.click(screen.getByRole('button', { name: /open color menu/i }));
+    await waitFor(() => expect(screen.getByText('Copy RGB')).toBeInTheDocument());
     await user.click(screen.getByText('Copy RGB'));
 
     expect(copyByFormat).toHaveBeenCalledWith(expect.objectContaining({ id: 'color-1' }), 'rgb', expect.any(HTMLElement));
@@ -80,13 +81,13 @@ describe('ColorSwatchButton overflow menu', () => {
     await waitFor(() => expect(screen.queryByText('Copy RGB')).not.toBeInTheDocument());
 
     await user.click(screen.getByRole('button', { name: /open color menu/i }));
-    expect(screen.getByText('Favorite')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Favorite')).toBeInTheDocument());
 
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByText('Favorite')).not.toBeInTheDocument());
 
     await user.click(screen.getByRole('button', { name: /open color menu/i }));
-    expect(screen.getByText('Add to palette')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Add to palette')).toBeInTheDocument());
     await user.click(document.body);
     await waitFor(() => expect(screen.queryByText('Add to palette')).not.toBeInTheDocument());
   });

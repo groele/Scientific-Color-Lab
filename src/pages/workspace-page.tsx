@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
@@ -15,17 +15,14 @@ import { DiagnosticsPanel } from '@/components/workspace/diagnostics-panel';
 import { InspectorPanel } from '@/components/workspace/inspector-panel';
 import { WelcomeOverlay } from '@/components/workspace/welcome-overlay';
 import { ColorSwatchButton } from '@/components/color/color-swatch-button';
-import { generateColorMatrix } from '@/domain/color/matrix';
-import { createConceptGradient, createCyclicGradient, createDivergingGradient, createPaletteGradient, createSequentialGradient } from '@/domain/color/gradients';
-import { generateTonalRamp } from '@/domain/color/ramp';
 import { scientificColorFromString } from '@/domain/color/convert';
-import { buildPairingRecommendationGroups } from '@/domain/pairing/engine';
 import type { PaletteClass, WorkspaceView } from '@/domain/models';
 import { useI18nStore } from '@/stores/i18n-store';
 import { usePreferencesStore } from '@/stores/preferences-store';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 
 const TemplateLibraryPanel = lazy(() => import('@/components/workspace/template-library-panel').then((module) => ({ default: module.TemplateLibraryPanel })));
+const ToneRampPanel = lazy(() => import('@/components/workspace/tone-ramp-panel').then((module) => ({ default: module.ToneRampPanel })));
 const PairingRecommendationPanel = lazy(() => import('@/components/workspace/pairing-recommendation-panel').then((module) => ({ default: module.PairingRecommendationPanel })));
 const AdjustmentHistoryPanel = lazy(() => import('@/components/workspace/adjustment-history-panel').then((module) => ({ default: module.AdjustmentHistoryPanel })));
 const ScientificMatrixPanel = lazy(() => import('@/components/workspace/scientific-matrix-panel').then((module) => ({ default: module.ScientificMatrixPanel })));
@@ -102,12 +99,15 @@ export function WorkspacePage() {
   const setFigureType = useWorkspaceStore((state) => state.setFigureType);
   const figureType = useWorkspaceStore((state) => state.figureContext.type);
   const figureContext = useWorkspaceStore((state) => state.figureContext);
+  const matrixMode = useWorkspaceStore((state) => state.matrixMode);
+  const matrixDensity = useWorkspaceStore((state) => state.matrixDensity);
   const showWelcome = usePreferencesStore((state) => state.showWelcome);
   const setShowWelcome = usePreferencesStore((state) => state.setShowWelcome);
   const language = useI18nStore((state) => state.language);
 
   const [baseHex, setBaseHex] = useState(selectedColor.hex);
   const [paletteClass, setPaletteClass] = useState<PaletteClass>(currentPalette.class);
+  const [showDeferredSidebar, setShowDeferredSidebar] = useState(false);
 
   useEffect(() => {
     const view = searchParams.get('view') as WorkspaceView | null;
@@ -131,6 +131,11 @@ export function WorkspacePage() {
     }
   }, []);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => setShowDeferredSidebar(true), 900);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   const viewItems = [
     { id: 'swatches', label: t('workspace:swatches') },
     { id: 'templates', label: t('workspace:templates') },
@@ -143,28 +148,6 @@ export function WorkspacePage() {
     { id: 'inspector', label: t('workspace:inspector') },
   ] as const;
 
-  const toneRamp = useMemo(() => (activeView === 'tone-ramp' ? generateTonalRamp(selectedColor, 11) : []), [activeView, selectedColor]);
-  const matrix = useMemo(
-    () => (activeView === 'scientific-grid' ? generateColorMatrix(selectedColor, useWorkspaceStore.getState().matrixMode, useWorkspaceStore.getState().matrixDensity) : null),
-    [activeView, selectedColor],
-  );
-  const gradients = useMemo(
-    () =>
-      activeView === 'gradient'
-        ? [
-            createPaletteGradient(currentPalette),
-            createSequentialGradient(selectedColor),
-            createDivergingGradient(selectedColor),
-            createCyclicGradient(selectedColor),
-            createConceptGradient(selectedColor),
-          ]
-        : [],
-    [activeView, currentPalette, selectedColor],
-  );
-  const pairingGroups = useMemo(
-    () => (activeView === 'pairing' ? buildPairingRecommendationGroups(selectedColor, figureContext, language) : []),
-    [activeView, figureContext, language, selectedColor],
-  );
   const diagnostics = currentPalette.diagnostics;
 
   const applyTemplate = async (templateId: string) => {
@@ -203,8 +186,8 @@ export function WorkspacePage() {
   const handleSavePalette = async () => {
     const { useLibraryStore } = await import('@/stores/library-store');
     const libraryStore = useLibraryStore.getState();
-    if (!libraryStore.hydrated) {
-      await libraryStore.hydrate();
+    if (!libraryStore.coreHydrated) {
+      await libraryStore.hydrate('core');
     }
 
     const projectId = libraryStore.projects[0]?.id;
@@ -237,19 +220,22 @@ export function WorkspacePage() {
         );
       case 'tone-ramp':
         return (
-          <SwatchSection
-            title={t('workspace:toneRamp')}
-            colors={toneRamp}
-            selectedColorId={selectedColorId}
-            onSelect={selectColor}
-            onSetMainColor={setMainColor}
-          />
+          <Suspense fallback={<PanelFallback label={t('workspace:toneRamp')} />}>
+            <ToneRampPanel
+              baseColor={selectedColor}
+              selectedColorId={selectedColorId}
+              onSelect={selectColor}
+              onSetMainColor={setMainColor}
+            />
+          </Suspense>
         );
       case 'scientific-grid':
         return (
           <Suspense fallback={<PanelFallback label={t('workspace:scientificGrid')} />}>
             <ScientificMatrixPanel
-              matrix={matrix!}
+              baseColor={selectedColor}
+              mode={matrixMode}
+              density={matrixDensity}
               selectedColorId={selectedColorId}
               onSelect={selectColor}
               onInsert={(hex) => insertHexes([hex])}
@@ -259,13 +245,13 @@ export function WorkspacePage() {
       case 'gradient':
         return (
           <Suspense fallback={<PanelFallback label={t('workspace:gradient')} />}>
-            <GradientEditorPanel gradients={gradients} />
+            <GradientEditorPanel palette={currentPalette} baseColor={selectedColor} />
           </Suspense>
         );
       case 'pairing':
         return (
           <Suspense fallback={<PanelFallback label={t('workspace:pairing')} />}>
-            <PairingRecommendationPanel groups={pairingGroups} onInsertColors={insertHexes} />
+            <PairingRecommendationPanel baseColor={selectedColor} figureContext={figureContext} language={language} onInsertColors={insertHexes} />
           </Suspense>
         );
       case 'chart-preview':
@@ -401,9 +387,11 @@ export function WorkspacePage() {
         }
         right={
           <>
-            <Suspense fallback={<PanelFallback label={t('common:history')} />}>
-              <AdjustmentHistoryPanel />
-            </Suspense>
+            {showDeferredSidebar ? (
+              <Suspense fallback={<PanelFallback label={t('common:history')} />}>
+                <AdjustmentHistoryPanel />
+              </Suspense>
+            ) : null}
             <DiagnosticsPanel
               summaryOnly
               diagnostics={diagnostics}

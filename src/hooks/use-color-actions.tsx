@@ -3,7 +3,6 @@ import { useToast } from '@/components/ui/toast-provider';
 import { serializeColorByFormat } from '@/domain/color/convert';
 import type { ColorToken, CopyFormat } from '@/domain/models';
 import { copyTextToClipboard } from '@/services/clipboard-service';
-import { useLibraryStore } from '@/stores/library-store';
 
 interface SwatchActionOptions {
   onSelect?: () => void;
@@ -15,7 +14,6 @@ interface SwatchActionOptions {
 export function useColorActions() {
   const { t } = useTranslation();
   const { pushToast, pushCopyFeedback } = useToast();
-  const toggleFavorite = useLibraryStore((state) => state.toggleFavorite);
 
   const copyHex = async (color: ColorToken, anchor?: Element | null) => {
     await copyTextToClipboard(color.hex);
@@ -29,6 +27,8 @@ export function useColorActions() {
   };
 
   const favoriteColor = async (color: ColorToken) => {
+    const { useLibraryStore } = await import('@/stores/library-store');
+    const toggleFavorite = useLibraryStore.getState().toggleFavorite;
     await toggleFavorite('color', color.id, color.name);
     pushToast(t('common.favorited', { name: color.name }));
   };

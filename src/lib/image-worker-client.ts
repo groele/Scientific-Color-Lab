@@ -24,6 +24,13 @@ function getWorker() {
   return worker;
 }
 
+export function resetImageAnalysisWorker() {
+  if (worker) {
+    worker.terminate();
+    worker = null;
+  }
+}
+
 function drawToCanvas(
   drawable: CanvasImageSource,
   sourceWidth: number,

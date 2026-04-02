@@ -1,14 +1,49 @@
-import type { PersistedSettings, StartupSnapshot } from '@/domain/models';
+import { useSyncExternalStore } from 'react';
+import type { PersistedSettings, StartupSnapshot, WorkspaceView } from '@/domain/models';
 import { defaultSettings, settingsRepository } from '@/db/repositories';
 import { clearStorageDegraded, markStorageDegraded } from '@/services/storage-status';
 
 const startupSnapshotKey = 'scientific-color-lab-startup-snapshot';
 const startupSnapshotVersion = 1;
 const settingsSaveDebounceMs = 300;
+const settingsSavedMessageDurationMs = 1200;
 
 let queuedPatch: Partial<PersistedSettings> = {};
 let saveTimer: number | null = null;
 let flushChain = Promise.resolve<PersistedSettings>({ ...defaultSettings });
+let saveStateResetTimer: number | null = null;
+
+type SettingsSaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
+interface SettingsRuntimeState {
+  saveStatus: SettingsSaveStatus;
+  message: string | null;
+}
+
+let runtimeState: SettingsRuntimeState = {
+  saveStatus: 'idle',
+  message: null,
+};
+const runtimeListeners = new Set<() => void>();
+
+function emitRuntimeState() {
+  runtimeListeners.forEach((listener) => listener());
+}
+
+function setRuntimeState(next: SettingsRuntimeState) {
+  runtimeState = next;
+  emitRuntimeState();
+}
+
+function scheduleSaveStateReset() {
+  if (saveStateResetTimer) {
+    window.clearTimeout(saveStateResetTimer);
+  }
+
+  saveStateResetTimer = window.setTimeout(() => {
+    setRuntimeState({ saveStatus: 'idle', message: null });
+  }, settingsSavedMessageDurationMs);
+}
 
 function snapshotFromSettings(source: Partial<PersistedSettings>, existing?: StartupSnapshot | null): StartupSnapshot {
   return {
@@ -18,6 +53,7 @@ function snapshotFromSettings(source: Partial<PersistedSettings>, existing?: Sta
     copyFormat: source.copyFormat ?? existing?.copyFormat ?? defaultSettings.copyFormat,
     showWelcome: source.showWelcome ?? existing?.showWelcome ?? defaultSettings.showWelcome,
     lastWorkspaceRoute: existing?.lastWorkspaceRoute,
+    activeView: existing?.activeView,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -60,6 +96,7 @@ export function loadStartupSnapshot(): StartupSnapshot | null {
       copyFormat: parsed.copyFormat,
       showWelcome: parsed.showWelcome,
       lastWorkspaceRoute: parsed.lastWorkspaceRoute,
+      activeView: parsed.activeView,
       updatedAt: parsed.updatedAt ?? new Date(0).toISOString(),
     };
   } catch (error) {
@@ -68,11 +105,14 @@ export function loadStartupSnapshot(): StartupSnapshot | null {
   }
 }
 
-export function saveStartupSnapshot(source: Partial<PersistedSettings>, lastWorkspaceRoute?: string) {
+export function saveStartupSnapshot(source: Partial<PersistedSettings>, lastWorkspaceRoute?: string, activeView?: WorkspaceView) {
   const current = loadStartupSnapshot();
   const snapshot = snapshotFromSettings(source, current);
   if (lastWorkspaceRoute !== undefined) {
     snapshot.lastWorkspaceRoute = lastWorkspaceRoute;
+  }
+  if (activeView !== undefined) {
+    snapshot.activeView = activeView;
   }
   persistSnapshot(snapshot);
   return snapshot;
@@ -96,6 +136,7 @@ export async function loadFullSettings() {
 export function scheduleSave(partial: Partial<PersistedSettings>) {
   queuedPatch = { ...queuedPatch, ...partial };
   saveStartupSnapshot(queuedPatch);
+  setRuntimeState({ saveStatus: 'saving', message: null });
   if (saveTimer) {
     window.clearTimeout(saveTimer);
   }
@@ -120,10 +161,33 @@ export function flush() {
   flushChain = flushChain
     .catch(() => ({ ...defaultSettings }))
     .then(async () => {
-      const settings = await settingsRepository.save(patch);
-      saveStartupSnapshot(settings);
-      return settings;
+      try {
+        const settings = await settingsRepository.save(patch);
+        saveStartupSnapshot(settings);
+        setRuntimeState({ saveStatus: 'saved', message: null });
+        scheduleSaveStateReset();
+        return settings;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to save settings.';
+        setRuntimeState({ saveStatus: 'error', message });
+        throw error;
+      }
     });
 
   return flushChain;
+}
+
+export function subscribeToSettingsRuntime(listener: () => void) {
+  runtimeListeners.add(listener);
+  return () => {
+    runtimeListeners.delete(listener);
+  };
+}
+
+export function getSettingsRuntimeState() {
+  return runtimeState;
+}
+
+export function useSettingsRuntimeState() {
+  return useSyncExternalStore(subscribeToSettingsRuntime, getSettingsRuntimeState, getSettingsRuntimeState);
 }

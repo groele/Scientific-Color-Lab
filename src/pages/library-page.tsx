@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Star } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -45,6 +45,8 @@ export function LibraryPage() {
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [projectDraft, setProjectDraft] = useState({ name: '', description: '', notes: '' });
   const [projectDraftState, setProjectDraftState] = useState<'clean' | 'dirty' | 'saving' | 'saved' | 'error'>('clean');
+  const [visiblePaletteCount, setVisiblePaletteCount] = useState(10);
+  const projectSaveRequestRef = useRef(0);
 
   useEffect(() => {
     if (!projects.length) {
@@ -126,16 +128,22 @@ export function LibraryPage() {
 
     setProjectDraftState('dirty');
     const timer = window.setTimeout(async () => {
+      const requestId = ++projectSaveRequestRef.current;
+      const projectId = selectedProject.id;
       setProjectDraftState('saving');
       try {
-        await updateProject(selectedProject.id, {
+        await updateProject(projectId, {
           name: projectDraft.name.trim() || selectedProject.name,
           description: projectDraft.description,
           notes: projectDraft.notes,
         });
-        setProjectDraftState('saved');
+        if (projectSaveRequestRef.current === requestId && selectedProjectId === projectId) {
+          setProjectDraftState('saved');
+        }
       } catch {
-        setProjectDraftState('error');
+        if (projectSaveRequestRef.current === requestId && selectedProjectId === projectId) {
+          setProjectDraftState('error');
+        }
       }
     }, 350);
 
@@ -147,16 +155,22 @@ export function LibraryPage() {
       return;
     }
 
+    const requestId = ++projectSaveRequestRef.current;
+    const projectId = selectedProject.id;
     setProjectDraftState('saving');
     try {
-      await updateProject(selectedProject.id, {
+      await updateProject(projectId, {
         name: projectDraft.name.trim() || selectedProject.name,
         description: projectDraft.description,
         notes: projectDraft.notes,
       });
-      setProjectDraftState('saved');
+      if (projectSaveRequestRef.current === requestId && selectedProjectId === projectId) {
+        setProjectDraftState('saved');
+      }
     } catch {
-      setProjectDraftState('error');
+      if (projectSaveRequestRef.current === requestId && selectedProjectId === projectId) {
+        setProjectDraftState('error');
+      }
     }
   };
 
@@ -169,6 +183,10 @@ export function LibraryPage() {
     () => palettes.filter((palette) => palette.projectId === selectedProject?.id),
     [palettes, selectedProject?.id],
   );
+
+  useEffect(() => {
+    setVisiblePaletteCount(10);
+  }, [query]);
 
   return (
     <SplitPanelLayout
@@ -399,7 +417,7 @@ export function LibraryPage() {
                   {t('common:loadingWorkspace')}
                 </div>
               ) : visiblePalettes.length ? (
-                visiblePalettes.map((palette) => {
+                visiblePalettes.slice(0, visiblePaletteCount).map((palette) => {
                   const paletteProject = projects.find((project) => project.id === palette.projectId);
                   return (
                     <div key={palette.id} className="rounded-2xl border border-border/80 bg-panel p-4">
@@ -467,6 +485,13 @@ export function LibraryPage() {
                   {t('library:noPalettes')}
                 </div>
               )}
+              {visiblePalettes.length > visiblePaletteCount ? (
+                <div className="flex justify-center">
+                  <Button variant="outline" onClick={() => setVisiblePaletteCount((current) => current + 10)}>
+                    {t('common:continue')}
+                  </Button>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         </>

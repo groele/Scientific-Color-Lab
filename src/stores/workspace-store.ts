@@ -57,11 +57,11 @@ interface WorkspaceState {
   copyFormat: CopyFormat;
   currentPalette: Palette;
   selectedColorId: string;
+  adjustmentContextVersion: number;
   matrixMode: MatrixMode;
   matrixDensity: MatrixDensity;
   figureContext: FigureContext;
   adjustment: AdjustmentState;
-  previousColor: ColorToken | null;
   setActiveView: (view: WorkspaceView) => void;
   setCopyFormat: (format: CopyFormat) => void;
   setMatrixMode: (mode: MatrixMode) => void;
@@ -96,6 +96,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   copyFormat: 'hex',
   currentPalette: seedPalette,
   selectedColorId: seedPalette.colors[0]!.id,
+  adjustmentContextVersion: 0,
   matrixMode: 'hue-lightness',
   matrixDensity: 7,
   figureContext: {
@@ -104,7 +105,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     emphasizeThinLines: true,
   },
   adjustment: createAdjustmentState(seedPalette.colors[0]!),
-  previousColor: null,
   setActiveView: (activeView) => set({ activeView }),
   setCopyFormat: (copyFormat) => set({ copyFormat }),
   setMatrixMode: (matrixMode) => set({ matrixMode }),
@@ -120,8 +120,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set({
       currentPalette: nextPalette,
       selectedColorId: selectedColor.id,
+      adjustmentContextVersion: get().adjustmentContextVersion + 1,
       adjustment: createAdjustmentState(selectedColor),
-      previousColor: null,
     });
   },
   applyTemplatePalette: (palette) => {
@@ -130,8 +130,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set({
       currentPalette: nextPalette,
       selectedColorId: selectedColor.id,
+      adjustmentContextVersion: get().adjustmentContextVersion + 1,
       adjustment: createAdjustmentState(selectedColor),
-      previousColor: null,
       activeView: 'swatches',
     });
     useHistoryStore.getState().reset();
@@ -160,8 +160,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
     set({
       selectedColorId,
+      adjustmentContextVersion: get().adjustmentContextVersion + 1,
       adjustment: createAdjustmentState(color),
-      previousColor: null,
     });
   },
   setMainColor: (colorId) => {
@@ -181,6 +181,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set({
       currentPalette: nextPalette,
       selectedColorId: colorId,
+      adjustmentContextVersion: get().adjustmentContextVersion + 1,
       adjustment: createAdjustmentState(nextColors[0]!),
     });
   },
@@ -245,6 +246,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       return {
         currentPalette: nextPalette,
         selectedColorId: nextSelected.id,
+        adjustmentContextVersion: state.adjustmentContextVersion + 1,
         adjustment: createAdjustmentState(nextSelected),
       };
     }),
@@ -291,7 +293,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           ...createAdjustmentState(updatedAnchor),
           locks: adjustment.locks,
         },
-        previousColor: selectedColor,
       };
     }),
   undo: () => {
@@ -305,8 +306,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set({
       currentPalette: previous,
       selectedColorId: nextSelected.id,
+      adjustmentContextVersion: get().adjustmentContextVersion + 1,
       adjustment: createAdjustmentState(nextSelected),
-      previousColor: null,
     });
   },
   redo: () => {
@@ -320,8 +321,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set({
       currentPalette: next,
       selectedColorId: nextSelected.id,
+      adjustmentContextVersion: get().adjustmentContextVersion + 1,
       adjustment: createAdjustmentState(nextSelected),
-      previousColor: null,
     });
   },
   getSelectedColor: () =>

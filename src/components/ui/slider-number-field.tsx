@@ -11,6 +11,7 @@ interface SliderNumberFieldProps {
   locked?: boolean;
   onChange: (value: number) => void;
   onNudge: (delta: number) => void;
+  onCommit?: () => void;
   onToggleLock?: () => void;
 }
 
@@ -23,6 +24,7 @@ export function SliderNumberField({
   locked = false,
   onChange,
   onNudge,
+  onCommit,
   onToggleLock,
 }: SliderNumberFieldProps) {
   return (
@@ -43,6 +45,9 @@ export function SliderNumberField({
         step={step}
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
+        onMouseUp={onCommit}
+        onTouchEnd={onCommit}
+        onKeyUp={onCommit}
       />
       <div className="flex items-center gap-2">
         <Button size="sm" variant="outline" onClick={() => onNudge(-step)}>
@@ -55,6 +60,7 @@ export function SliderNumberField({
           min={min}
           max={max}
           step={step}
+          onBlur={onCommit}
         />
         <Button size="sm" variant="outline" onClick={() => onNudge(step)}>
           <Plus className="h-3.5 w-3.5" />

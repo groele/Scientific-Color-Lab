@@ -24,7 +24,10 @@ import {
 import { createId } from '@/domain/color/convert';
 import { importPaletteFromCsv, importPaletteFromJson } from '@/domain/library/import';
 
-let hydrationPromise: Promise<void> | null = null;
+type LibraryHydrationLevel = 'core' | 'full';
+
+let coreHydrationPromise: Promise<void> | null = null;
+let fullHydrationPromise: Promise<void> | null = null;
 
 function defaultProject(): Project {
   const now = new Date().toISOString();
@@ -112,8 +115,9 @@ interface LibraryState {
   exportProfiles: ExportProfile[];
   tags: Tag[];
   search: string;
+  coreHydrated: boolean;
   hydrated: boolean;
-  hydrate: () => Promise<void>;
+  hydrate: (level?: LibraryHydrationLevel) => Promise<void>;
   setSearch: (value: string) => void;
   savePalette: (palette: Palette, projectId?: string) => Promise<void>;
   assignPaletteToProject: (paletteId: string, projectId?: string) => Promise<void>;
@@ -139,30 +143,43 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   exportProfiles: [],
   tags: [],
   search: '',
+  coreHydrated: false,
   hydrated: false,
-  hydrate: async () => {
-    if (get().hydrated) {
+  hydrate: async (level = 'full') => {
+    if (!get().coreHydrated) {
+      if (!coreHydrationPromise) {
+        coreHydrationPromise = (async () => {
+          let projects = await projectRepository.list();
+          if (!projects.length) {
+            const seeded = defaultProject();
+            await projectRepository.save(seeded);
+            projects = [seeded];
+          }
+
+          let exportProfiles = await exportProfileRepository.list();
+          if (!exportProfiles.length) {
+            const seeded = defaultExportProfiles();
+            await Promise.all(seeded.map((profile) => exportProfileRepository.save(profile)));
+            exportProfiles = seeded;
+          }
+
+          const palettes = await paletteRepository.list();
+          set({ projects, palettes, exportProfiles, coreHydrated: true });
+        })().finally(() => {
+          coreHydrationPromise = null;
+        });
+      }
+
+      await coreHydrationPromise;
+    }
+
+    if (level === 'core' || get().hydrated) {
       return;
     }
 
-    if (!hydrationPromise) {
-      hydrationPromise = (async () => {
-        let projects = await projectRepository.list();
-        if (!projects.length) {
-          const seeded = defaultProject();
-          await projectRepository.save(seeded);
-          projects = [seeded];
-        }
-
-        let exportProfiles = await exportProfileRepository.list();
-        if (!exportProfiles.length) {
-          const seeded = defaultExportProfiles();
-          await Promise.all(seeded.map((profile) => exportProfileRepository.save(profile)));
-          exportProfiles = seeded;
-        }
-
-        const [palettes, favorites, recents, savedExports, assets, tags] = await Promise.all([
-          paletteRepository.list(),
+    if (!fullHydrationPromise) {
+      fullHydrationPromise = (async () => {
+        const [favorites, recents, savedExports, assets, tags] = await Promise.all([
           favoriteRepository.list(),
           recentRepository.list(),
           exportRepository.list(),
@@ -170,13 +187,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           tagRepository.list(),
         ]);
 
-        set({ projects, palettes, favorites, recents, savedExports, exportProfiles, assets, tags, hydrated: true });
+        set({ favorites, recents, savedExports, assets, tags, hydrated: true });
       })().finally(() => {
-        hydrationPromise = null;
+        fullHydrationPromise = null;
       });
     }
 
-    await hydrationPromise;
+    await fullHydrationPromise;
   },
   setSearch: (search) => set({ search }),
   savePalette: async (palette, projectId) => {

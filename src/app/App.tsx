@@ -61,11 +61,10 @@ export function App() {
           return;
         }
 
+        restoreCompleted = true;
         applyPreferencesSettings(settings);
         applyDiagnosticsSettings(settings);
-        await applyI18nSettings(settings);
         setCopyFormat(settings.copyFormat);
-        restoreCompleted = true;
         performance.mark('full-restore-complete');
         performance.measure('app-full-restore', 'app-shell-visible', 'full-restore-complete');
         setBootstrapState({
@@ -73,6 +72,19 @@ export function App() {
           issues: [],
           restoredFrom: 'dexie',
           storageMode: getStorageStatus().degraded ? 'memory' : 'persistent',
+        });
+        void applyI18nSettings(settings).catch((error) => {
+          if (!active) {
+            return;
+          }
+
+          setBootstrapState((current) => ({
+            ...current,
+            phase: current.phase === 'failed' ? 'failed' : 'degraded',
+            issues: current.issues.includes(error instanceof Error ? error.message : 'Language resources failed to load.')
+              ? current.issues
+              : [...current.issues, error instanceof Error ? error.message : 'Language resources failed to load.'],
+          }));
         });
       } catch (error) {
         if (!active) {

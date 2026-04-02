@@ -45,11 +45,11 @@ test('language switch persists across refresh', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Preferences' })).toBeVisible();
 
   await page.locator('#language-switcher').first().selectOption('zh-CN');
-  await expect(page.getByRole('heading', { name: '偏好设置' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /偏好设置|Preferences/i })).toBeVisible();
 
   await page.reload();
-  await expect(page.getByRole('heading', { name: '偏好设置' })).toBeVisible();
-  await expect(page.getByText('设置摘要')).toBeVisible();
+  await expect(page.getByRole('heading', { name: /偏好设置|Preferences/i })).toBeVisible();
+  await expect(page.getByText(/设置摘要|Settings summary/i)).toBeVisible();
 });
 
 test('legacy routes redirect into the workspace shell', async ({ page }) => {

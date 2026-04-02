@@ -29,6 +29,9 @@ if (startupSnapshot) {
   usePreferencesStore.getState().primeFromSnapshot(startupSnapshot);
   useI18nStore.getState().primeFromSnapshot(startupSnapshot);
   useWorkspaceStore.getState().setCopyFormat(startupSnapshot.copyFormat);
+  if (startupSnapshot.activeView) {
+    useWorkspaceStore.getState().setActiveView(startupSnapshot.activeView);
+  }
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

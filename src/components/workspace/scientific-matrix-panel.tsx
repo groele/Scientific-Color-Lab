@@ -1,17 +1,22 @@
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ColorSwatchButton } from '@/components/color/color-swatch-button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import type { ColorMatrix } from '@/domain/models';
+import { generateColorMatrix } from '@/domain/color/matrix';
+import type { ColorToken, MatrixDensity, MatrixMode } from '@/domain/models';
 
 interface ScientificMatrixPanelProps {
-  matrix: ColorMatrix;
+  baseColor: ColorToken;
+  mode: MatrixMode;
+  density: MatrixDensity;
   selectedColorId: string;
   onSelect: (colorId: string) => void;
   onInsert: (hex: string) => void;
 }
 
-export function ScientificMatrixPanel({ matrix, selectedColorId, onSelect, onInsert }: ScientificMatrixPanelProps) {
+export function ScientificMatrixPanel({ baseColor, mode, density, selectedColorId, onSelect, onInsert }: ScientificMatrixPanelProps) {
   const { t } = useTranslation(['workspace']);
+  const matrix = useMemo(() => generateColorMatrix(baseColor, mode, density), [baseColor, density, mode]);
 
   const axisLabel = (value: string) => {
     switch (value) {

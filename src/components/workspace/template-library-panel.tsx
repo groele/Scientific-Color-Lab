@@ -64,6 +64,7 @@ export function TemplateLibraryPanel({ currentPalette, onApplyTemplate }: Templa
   const templates = useTemplateStore((state) => state.templates);
   const recentTemplateIds = useTemplateStore((state) => state.recentTemplateIds);
   const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState(12);
 
   const visibleTemplates = useMemo(() => {
     const ranked = rankTemplateCatalog(filterTemplateCatalog(templates, query, filters));
@@ -96,6 +97,10 @@ export function TemplateLibraryPanel({ currentPalette, onApplyTemplate }: Templa
       setPreviewTemplateId(visibleTemplates[0]!.id);
     }
   }, [previewTemplateId, visibleTemplates]);
+
+  useEffect(() => {
+    setVisibleCount(12);
+  }, [filters, query]);
 
   const previewTemplate = visibleTemplates.find((template) => template.id === previewTemplateId) ?? visibleTemplates[0] ?? null;
   const previewPalette = previewTemplate ? templateToPalette(previewTemplate) : null;
@@ -240,7 +245,7 @@ export function TemplateLibraryPanel({ currentPalette, onApplyTemplate }: Templa
         ) : null}
 
         <div className="grid gap-4 2xl:grid-cols-2">
-          {visibleTemplates.map((template) => {
+          {visibleTemplates.slice(0, visibleCount).map((template) => {
             const palette = templateToPalette(template);
             const scientificMeta = deriveScientificTemplateMeta(template);
             const previewed = previewTemplate?.id === template.id;
@@ -296,6 +301,14 @@ export function TemplateLibraryPanel({ currentPalette, onApplyTemplate }: Templa
             );
           })}
         </div>
+
+        {visibleTemplates.length > visibleCount ? (
+          <div className="flex justify-center">
+            <Button variant="outline" onClick={() => setVisibleCount((current) => current + 12)}>
+              {t('common:continue')}
+            </Button>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

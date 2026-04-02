@@ -1,8 +1,9 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BrowserRouter, HashRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { AppShell } from '@/app/app-shell';
-import type { AppBootstrapState } from '@/domain/models';
+import type { AppBootstrapState, WorkspaceView } from '@/domain/models';
+import { loadStartupSnapshot, saveStartupSnapshot } from '@/services/settings-runtime';
 
 const WorkspacePage = lazy(() => import('@/pages/workspace-page').then((module) => ({ default: module.WorkspacePage })));
 const LibraryPage = lazy(() => import('@/pages/library-page').then((module) => ({ default: module.LibraryPage })));
@@ -13,11 +14,25 @@ const NotFoundPage = lazy(() => import('@/pages/not-found-page').then((module) =
 const routerBase = import.meta.env.BASE_URL.replace(/\/+$/, '') || '/';
 const useHashRouter = import.meta.env.BASE_URL !== '/';
 
+function RoutePersistence() {
+  const location = useLocation();
+
+  useEffect(() => {
+    const nextRoute = `${location.pathname}${location.search}${location.hash}`;
+    const searchParams = new URLSearchParams(location.search);
+    const activeView = location.pathname === '/workspace' ? searchParams.get('view') ?? undefined : undefined;
+    saveStartupSnapshot({}, nextRoute, activeView as WorkspaceView | undefined);
+  }, [location.hash, location.pathname, location.search]);
+
+  return null;
+}
+
 function Layout({ bootstrapState }: { bootstrapState: AppBootstrapState }) {
   const { t } = useTranslation(['common']);
 
   return (
     <AppShell bootstrapState={bootstrapState}>
+      <RoutePersistence />
       <Suspense fallback={<div className="rounded-2xl border border-border/80 bg-panel p-4 text-sm text-foreground/65">{t('common:loadingWorkspace')}</div>}>
         <Outlet />
       </Suspense>
@@ -28,12 +43,13 @@ function Layout({ bootstrapState }: { bootstrapState: AppBootstrapState }) {
 export function AppRoutes({ bootstrapState }: { bootstrapState: AppBootstrapState }) {
   const Router = useHashRouter ? HashRouter : BrowserRouter;
   const routerProps = useHashRouter ? {} : { basename: routerBase };
+  const startupRoute = useMemo(() => loadStartupSnapshot()?.lastWorkspaceRoute || '/workspace', []);
 
   return (
     <Router {...routerProps}>
       <Routes>
         <Route element={<Layout bootstrapState={bootstrapState} />}>
-          <Route index element={<Navigate to="/workspace" replace />} />
+          <Route index element={<Navigate to={startupRoute} replace />} />
           <Route path="/workspace" element={<WorkspacePage />} />
           <Route path="/library" element={<LibraryPage />} />
           <Route path="/analyzer" element={<AnalyzerPage />} />

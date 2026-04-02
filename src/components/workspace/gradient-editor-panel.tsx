@@ -1,12 +1,27 @@
+import { useMemo } from 'react';
 import type { GradientDefinition } from '@/domain/models';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ColorSwatchButton } from '@/components/color/color-swatch-button';
+import { createConceptGradient, createCyclicGradient, createDivergingGradient, createPaletteGradient, createSequentialGradient } from '@/domain/color/gradients';
+import type { ColorToken, Palette } from '@/domain/models';
 
 interface GradientEditorPanelProps {
-  gradients: GradientDefinition[];
+  palette: Palette;
+  baseColor: ColorToken;
 }
 
-export function GradientEditorPanel({ gradients }: GradientEditorPanelProps) {
+export function GradientEditorPanel({ palette, baseColor }: GradientEditorPanelProps) {
+  const gradients = useMemo<GradientDefinition[]>(
+    () => [
+      createPaletteGradient(palette),
+      createSequentialGradient(baseColor),
+      createDivergingGradient(baseColor),
+      createCyclicGradient(baseColor),
+      createConceptGradient(baseColor),
+    ],
+    [baseColor, palette],
+  );
+
   return (
     <div className="space-y-4">
       {gradients.map((gradient) => (

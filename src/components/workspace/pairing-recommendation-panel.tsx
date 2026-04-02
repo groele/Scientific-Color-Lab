@@ -1,16 +1,24 @@
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ColorSwatchButton } from '@/components/color/color-swatch-button';
-import type { PairingRecommendationGroup } from '@/domain/models';
+import { buildPairingRecommendationGroups } from '@/domain/pairing/engine';
+import type { ColorToken, FigureContext, LanguageCode, PairingRecommendationGroup } from '@/domain/models';
 
 interface PairingRecommendationPanelProps {
-  groups: PairingRecommendationGroup[];
+  baseColor: ColorToken;
+  figureContext: FigureContext;
+  language: LanguageCode;
   onInsertColors: (hexes: string[]) => void;
 }
 
-export function PairingRecommendationPanel({ groups, onInsertColors }: PairingRecommendationPanelProps) {
+export function PairingRecommendationPanel({ baseColor, figureContext, language, onInsertColors }: PairingRecommendationPanelProps) {
   const { t } = useTranslation(['workspace', 'common']);
+  const groups = useMemo<PairingRecommendationGroup[]>(
+    () => buildPairingRecommendationGroups(baseColor, figureContext, language),
+    [baseColor, figureContext, language],
+  );
 
   return (
     <Card>

@@ -1,26 +1,61 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SliderNumberField } from '@/components/ui/slider-number-field';
 import { useWorkspaceHistory } from '@/hooks/use-workspace-history';
 import { useColorActions } from '@/hooks/use-color-actions';
 import { nudgeAdjustment } from '@/domain/color/adjustment';
+import type { AdjustmentState, ColorToken } from '@/domain/models';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 
 export function HighFrequencyAdjustmentPanel() {
   const { t } = useTranslation(['workspace']);
   const selectedColor = useWorkspaceStore((state) => state.getSelectedColor());
-  const previousColorState = useWorkspaceStore((state) => state.previousColor);
+  const adjustmentContextVersion = useWorkspaceStore((state) => state.adjustmentContextVersion);
   const adjustment = useWorkspaceStore((state) => state.adjustment);
   const updateAdjustment = useWorkspaceStore((state) => state.updateAdjustment);
   const selectColor = useWorkspaceStore((state) => state.selectedColorId);
   const { canUndo, canRedo, undo, redo } = useWorkspaceHistory();
   const { copyHex } = useColorActions();
-  const previousColor = previousColorState ?? selectedColor;
+  const [comparisonBaseline, setComparisonBaseline] = useState<ColorToken | null>(null);
+  const [comparisonAnchorId, setComparisonAnchorId] = useState<string | null>(null);
+  const isAdjustingRef = useRef(false);
+  const previousColor = comparisonBaseline && comparisonAnchorId === selectedColor.id ? comparisonBaseline : selectedColor;
 
   useEffect(() => {
     void selectColor;
   }, [selectColor]);
+
+  useEffect(() => {
+    isAdjustingRef.current = false;
+    setComparisonBaseline(null);
+    setComparisonAnchorId(null);
+  }, [adjustmentContextVersion]);
+
+  const beginComparisonSessionIfNeeded = (color: ColorToken) => {
+    if (isAdjustingRef.current) {
+      return;
+    }
+
+    isAdjustingRef.current = true;
+    setComparisonBaseline(color);
+    setComparisonAnchorId(color.id);
+  };
+
+  const markSessionComplete = () => {
+    isAdjustingRef.current = false;
+  };
+
+  const applyAdjustment = (nextAdjustment: AdjustmentState) => {
+    beginComparisonSessionIfNeeded(selectedColor);
+    updateAdjustment(nextAdjustment);
+  };
+
+  const applyNudge = (nextAdjustment: AdjustmentState) => {
+    beginComparisonSessionIfNeeded(selectedColor);
+    updateAdjustment(nextAdjustment);
+    markSessionComplete();
+  };
 
   return (
     <Card>
@@ -71,8 +106,9 @@ export function HighFrequencyAdjustmentPanel() {
           max={360}
           step={1}
           locked={adjustment.locks.hue}
-          onChange={(value) => updateAdjustment({ ...adjustment, hue: value })}
-          onNudge={(delta) => updateAdjustment(nudgeAdjustment(adjustment, 'hue', delta))}
+          onChange={(value) => applyAdjustment({ ...adjustment, hue: value })}
+          onNudge={(delta) => applyNudge(nudgeAdjustment(adjustment, 'hue', delta))}
+          onCommit={markSessionComplete}
           onToggleLock={() => updateAdjustment({ ...adjustment, locks: { ...adjustment.locks, hue: !adjustment.locks.hue } })}
         />
         <SliderNumberField
@@ -82,8 +118,9 @@ export function HighFrequencyAdjustmentPanel() {
           max={1}
           step={0.01}
           locked={adjustment.locks.lightness}
-          onChange={(value) => updateAdjustment({ ...adjustment, lightness: value })}
-          onNudge={(delta) => updateAdjustment(nudgeAdjustment(adjustment, 'lightness', delta))}
+          onChange={(value) => applyAdjustment({ ...adjustment, lightness: value })}
+          onNudge={(delta) => applyNudge(nudgeAdjustment(adjustment, 'lightness', delta))}
+          onCommit={markSessionComplete}
           onToggleLock={() => updateAdjustment({ ...adjustment, locks: { ...adjustment.locks, lightness: !adjustment.locks.lightness } })}
         />
         <SliderNumberField
@@ -93,8 +130,9 @@ export function HighFrequencyAdjustmentPanel() {
           max={0.28}
           step={0.005}
           locked={adjustment.locks.chroma}
-          onChange={(value) => updateAdjustment({ ...adjustment, chroma: value })}
-          onNudge={(delta) => updateAdjustment(nudgeAdjustment(adjustment, 'chroma', delta))}
+          onChange={(value) => applyAdjustment({ ...adjustment, chroma: value })}
+          onNudge={(delta) => applyNudge(nudgeAdjustment(adjustment, 'chroma', delta))}
+          onCommit={markSessionComplete}
           onToggleLock={() => updateAdjustment({ ...adjustment, locks: { ...adjustment.locks, chroma: !adjustment.locks.chroma } })}
         />
         <SliderNumberField
@@ -104,8 +142,9 @@ export function HighFrequencyAdjustmentPanel() {
           max={1}
           step={0.05}
           locked={adjustment.locks.alpha}
-          onChange={(value) => updateAdjustment({ ...adjustment, alpha: value })}
-          onNudge={(delta) => updateAdjustment(nudgeAdjustment(adjustment, 'alpha', delta))}
+          onChange={(value) => applyAdjustment({ ...adjustment, alpha: value })}
+          onNudge={(delta) => applyNudge(nudgeAdjustment(adjustment, 'alpha', delta))}
+          onCommit={markSessionComplete}
           onToggleLock={() => updateAdjustment({ ...adjustment, locks: { ...adjustment.locks, alpha: !adjustment.locks.alpha } })}
         />
       </CardContent>

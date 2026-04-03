@@ -584,3 +584,14 @@ npm run test:e2e
 8. 去 `Exports` 导出
 
 这条路径是当前版本最成熟、最稳定、最适合实际使用的工作流。
+
+
+## 开发背景
+该项目由 [Seking](mailto:shikun.creative@gmail.com) 开发，旨在满足在学术论文中需要高质量配色的需求。通过自定义开发，提供了更灵活和高效的导出功能。
+
+如果本插件对您有所助益，恳请在 GitHub 仓库点亮 ⭐ 并予以支持捐赠；您的鼓励将成为我持续迭代和完善插件的不竭动力。
+
+![328234138c4abfc6be098e31be4584d](https://github.com/user-attachments/assets/5a1d5e4f-dd7a-4a44-bb76-792df13aed41)
+
+## License
+[Apache 2.0](sslocal://flow/file_open?url=LICENSE&flow_extra=eyJsaW5rX3R5cGUiOiJjb2RlX2ludGVycHJldGVyIn0=) © 2025 Your Name

@@ -99,7 +99,7 @@ Scientific Color Lab
 ```bash
 git clone https://github.com/groele/Scientific-Color-Lab.git
 cd Scientific-Color-Lab
-npm install
+npm install --legacy-peer-deps
 npm run build
 npm run preview
 ```
